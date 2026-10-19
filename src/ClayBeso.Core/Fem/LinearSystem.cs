@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using CSparse;
 using CSparse.Double.Factorization;
 using CSparse.Storage;
@@ -19,6 +20,12 @@ namespace ClayBeso.Fem
         private SparseCholesky _chol;
 
         public int EquationCount { get; }
+
+        /// <summary>Non-zeros in the Cholesky factor L (0 before the first factorisation).</summary>
+        public int FactorNonZeros => _chol?.NonZerosCount ?? 0;
+
+        /// <summary>Non-zeros stored in the upper triangle of K.</summary>
+        public int MatrixNonZeros => _k.NonZerosCount;
 
         public LinearSystem(ShellModel model)
         {
@@ -73,7 +80,8 @@ namespace ClayBeso.Fem
         }
 
         /// <summary>K = sum_e fm[e] * Km_e + fb[e] * Kb_e, then factorise.</summary>
-        public void AssembleAndFactor(double[] fm, double[] fb)
+        /// <summary>K = sum_e fm[e] * Km_e + fb[e] * Kb_e (values only; the pattern is fixed).</summary>
+        public void Assemble(double[] fm, double[] fb)
         {
             var vals = _k.Values;
             Array.Clear(vals, 0, vals.Length);
@@ -87,12 +95,46 @@ namespace ClayBeso.Fem
                 for (int k = 0; k < 324; k++)
                     if (s[k] >= 0) vals[s[k]] += a * km[k] + b * kb[k];
             }
+            _factorCurrent = false;
+        }
 
+        /// <summary>Cholesky factorisation of the assembled matrix (symbolic analysis reused).</summary>
+        public void Factor()
+        {
+            var sw = Stopwatch.StartNew();
             if (_chol == null)
                 _chol = SparseCholesky.Create(_k, ColumnOrdering.MinimumDegreeAtPlusA);
             else
                 _chol.Refactorize(_k);
+            _factorCurrent = true;
+            _refactorNext = false;
+            LastFactorMs = sw.Elapsed.TotalMilliseconds;
         }
+
+        // ------------------------------------------------------------------ reanalysis
+        //
+        // During optimisation K changes a little each iteration. Instead of refactorising
+        // (the dominant cost), the last factorisation preconditions a conjugate-gradient solve
+        // of the new K. That costs one triangular solve per CG iteration and typically needs a
+        // handful of iterations. The matrix is refactorised once CG gets as slow as a fresh
+        // factorisation would have been.
+
+        private bool _factorCurrent;   // _chol is the factorisation of the current values
+        private bool _refactorNext;
+        private double[] _lastX;
+
+        /// <summary>Reuse an older factorisation as a CG preconditioner when K has changed.</summary>
+        public bool ReuseFactorisation { get; set; } = true;
+
+        /// <summary>Relative residual |K x - b| / |b| that CG must reach.</summary>
+        public double Tolerance { get; set; } = 1e-10;
+
+        public int MaxIterations { get; set; } = 200;
+
+        public int LastIterations { get; private set; }
+        public bool LastRefactorised { get; private set; }
+        public double LastFactorMs { get; private set; }
+        public int FactorisationCount { get; private set; }
 
         /// <summary>Solve for the full (6 per node) displacement vector given the full load vector.</summary>
         public double[] Solve(double[] fullLoad)
@@ -101,11 +143,105 @@ namespace ClayBeso.Fem
             for (int d = 0; d < _eq.Length; d++)
                 if (_eq[d] >= 0) b[_eq[d]] = fullLoad[d];
             var x = new double[EquationCount];
-            _chol.Solve(b, x);
+
+            LastIterations = 0;
+            LastRefactorised = false;
+            bool solved = false;
+            if (!_factorCurrent && _chol != null && ReuseFactorisation && !_refactorNext)
+            {
+                var sw = Stopwatch.StartNew();
+                solved = Pcg(b, x);
+                // Once CG costs about as much as refactorising, refactorise next time.
+                if (solved && sw.Elapsed.TotalMilliseconds > 0.5 * LastFactorMs) _refactorNext = true;
+            }
+            if (!solved)
+            {
+                if (!_factorCurrent)
+                {
+                    Factor();
+                    FactorisationCount++;
+                    LastRefactorised = true;
+                }
+                _chol.Solve(b, x);
+            }
+            _lastX = x;
+
             var u = new double[_eq.Length];
             for (int d = 0; d < _eq.Length; d++)
                 if (_eq[d] >= 0) u[d] = x[_eq[d]];
             return u;
+        }
+
+        /// <summary>Preconditioned CG, warm-started from the previous solution. False if it did not converge.</summary>
+        private bool Pcg(double[] b, double[] x)
+        {
+            int n = b.Length;
+            double bnorm = Math.Sqrt(Dot(b, b));
+            if (bnorm == 0) return true;
+
+            var r = new double[n];
+            if (_lastX != null && _lastX.Length == n)
+            {
+                Array.Copy(_lastX, x, n);
+                MultiplyK(x, r);
+                for (int i = 0; i < n; i++) r[i] = b[i] - r[i];
+            }
+            else
+            {
+                Array.Copy(b, r, n);
+            }
+            if (Math.Sqrt(Dot(r, r)) <= Tolerance * bnorm) return true;
+
+            var z = new double[n];
+            var q = new double[n];
+            _chol.Solve(r, z);
+            var p = (double[])z.Clone();
+            double rz = Dot(r, z);
+
+            for (int k = 1; k <= MaxIterations; k++)
+            {
+                MultiplyK(p, q);
+                double pq = Dot(p, q);
+                if (pq <= 0) return false; // lost positive definiteness: fall back to a fresh factor
+                double alpha = rz / pq;
+                for (int i = 0; i < n; i++) { x[i] += alpha * p[i]; r[i] -= alpha * q[i]; }
+                LastIterations = k;
+                if (Math.Sqrt(Dot(r, r)) <= Tolerance * bnorm) return true;
+
+                _chol.Solve(r, z);
+                double rzNew = Dot(r, z);
+                double beta = rzNew / rz;
+                rz = rzNew;
+                for (int i = 0; i < n; i++) p[i] = z[i] + beta * p[i];
+            }
+            return false;
+        }
+
+        /// <summary>y = K x using the stored upper triangle.</summary>
+        private void MultiplyK(double[] x, double[] y)
+        {
+            Array.Clear(y, 0, y.Length);
+            var cp = _k.ColumnPointers;
+            var ri = _k.RowIndices;
+            var v = _k.Values;
+            for (int j = 0; j < EquationCount; j++)
+            {
+                double xj = x[j], sum = 0;
+                for (int k = cp[j]; k < cp[j + 1]; k++)
+                {
+                    int i = ri[k];
+                    y[i] += v[k] * xj;
+                    if (i != j) sum += v[k] * x[i];
+                }
+                y[j] += sum;
+            }
+        }
+
+        private static double Dot(double[] a, double[] b)
+        {
+            double s = 0;
+            for (int i = 0; i < a.Length; i++) s += a[i] * b[i];
+            return s;
         }
     }
 }

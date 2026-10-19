@@ -46,12 +46,31 @@ dC/dx_e = 2 u_eᵀ (dfw/dx) w_e − u_eᵀ (dfm/dx Km + dfb/dx Kb) u_e
   Elements are ranked by α and the top ones are kept until the volume is reached, with at most
   `AR·V_ref` re-admitted per iteration.
 
+By default thickness mode keeps the starting volume (`V* = Σ A t₀`) and only redistributes it.
+
+**Negative sensitivities (self-weight).** The OC factor `(α/λ)^η` can only shrink faces with
+α ≤ 0. Under self-weight many faces have α < 0. When the faces with α > 0 cannot hold `V*` even at
+their upper bounds, the update shifts every α by a constant (`α ← α − α_min + 0.05(α_max − α_min)`)
+before the bisection. A constant shift leaves the optimality condition unchanged (α equal on all
+faces strictly between the bounds, with a free-sign multiplier for the volume equality) and
+restores the volume. Without it, the update lost about 19% of the clay on fine meshes and never
+converged.
+
 Both modes:
 - volume schedule `V_{k+1} = max(V*, V_k (1 − ER))`,
 - linear-hat filter over element centroids with radius r (mesh independence),
-- history averaging `α_k ← (α_k + α_{k−1})/2`,
+- history averaging `α_k ← (α_k + α_{k−1})/2`, on in void mode only (it damps the discrete
+  oscillation but slows the continuous thickness update),
 - convergence when the volume is at the target and
-  `|Σ_{i<N} C_{k−i} − Σ_{i<N} C_{k−N−i}| / Σ C_{k−i} ≤ τ` (N = 5).
+  `|Σ_{i<N} C_{k−i} − Σ_{i<N} C_{k−N−i}| / Σ C_{k−i} ≤ τ`, with N = 3 (thickness) or 5 (void).
+- thickness mode move limit 0.3 (tMax − tMin) per iteration.
+
+These defaults bring typical thickness runs from ~21 to ~10 iterations with the same compliance.
+
+**Reanalysis.** Factorising K takes about 98% of an iteration. After the first iteration, the
+previous Cholesky factor preconditions a CG solve of the new K (warm start from the last
+displacements, relative residual 1e-10). The matrix is refactorised only when CG becomes as
+expensive as a factorisation. Results match direct solves to ~1e-11.
 
 The analytic sensitivities are checked against central finite differences in the tests.
 

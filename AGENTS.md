@@ -124,7 +124,12 @@ into the Grasshopper Libraries folder. Rhino must be restarted to load a new bui
   load term: `alpha = (dfm*u'Km u + dfb*u'Kb u - 2*dfw*u.w) / dV`. Elements can get negative
   sensitivity (they weigh more than they help).
 - Thickness mode uses an optimality-criteria update with a volume schedule
-  (`V_k+1 = max(V*, V_k(1-ER))`), move limit and history averaging. Void mode follows
+  (`V_k+1 = max(V*, V_k(1-ER))`) and a move limit (0.3·span). By default it keeps the starting
+  volume. When positive-sensitivity faces can't hold the target volume (self-weight), the
+  sensitivities are shifted by a constant. Don't go back to clipping at zero: that silently loses
+  clay (regression test `SelfWeightOnFineMeshKeepsTheClayAndConverges`).
+- `LinearSystem` reuses the previous Cholesky factor as a CG preconditioner (reanalysis) and only
+  refactorises when CG gets slow. `ReusedFactorisationGivesTheSameDesignAsDirectSolves` checks it. Void mode follows
   Huang & Xie (2007/2010) with an admission-ratio cap.
 - Layer field `phi`: layer k is the iso-curve `phi = k`. The conforming method solves two
   Poisson problems (harmonic stacking direction, then least-squares fit of

@@ -153,6 +153,42 @@ public class BesoTests
         Assert.True(final < 0.8 * uniform, "same clay, stiffer vase");
     }
 
+    /// <summary>
+    /// Regression: on finer meshes, pure self-weight drove most sensitivities negative. Clipping
+    /// them at zero lost ~19% of the clay and the run never converged.
+    /// </summary>
+    [Fact]
+    public void SelfWeightOnFineMeshKeepsTheClayAndConverges()
+    {
+        var model = VaseModel(64, 48, lateral: 0);
+        var opt = new BesoOptimizer(model, new BesoSettings { MinThickness = 3.5, MaxThickness = 9, FilterRadius = 15 });
+        double v0 = opt.DesignVolume;
+        while (opt.Step()) { }
+        _out.WriteLine($"iterations {opt.Iteration}, converged {opt.Converged}, volume error {(opt.DesignVolume - v0) / v0:E1}");
+        Assert.True(opt.Converged);
+        Assert.True(opt.Iteration <= 20, $"took {opt.Iteration} iterations");
+        Assert.InRange((opt.DesignVolume - v0) / v0, -1e-6, 1e-6);
+    }
+
+    [Fact]
+    public void ReusedFactorisationGivesTheSameDesignAsDirectSolves()
+    {
+        var model = VaseModel(32, 24, lateral: 2);
+        BesoOptimizer Run(bool reuse)
+        {
+            var o = new BesoOptimizer(model, new BesoSettings { MinThickness = 3.5, MaxThickness = 9, FilterRadius = 20 },
+                new ShellSolver(model) { ReuseFactorisation = reuse });
+            while (o.Step()) { }
+            return o;
+        }
+        var direct = Run(false);
+        var reused = Run(true);
+        Assert.Equal(direct.Iteration, reused.Iteration);
+        for (int i = 0; i < direct.ComplianceHistory.Count; i++)
+            Assert.Equal(direct.ComplianceHistory[i], reused.ComplianceHistory[i], 8);
+        Assert.True(reused.Solver.LastTimings.FactorisationCount < direct.Solver.LastTimings.FactorisationCount);
+    }
+
     [Theory]
     [InlineData(3.5)] // starting wall at tMin: nothing to redistribute
     [InlineData(12)]  // above tMax

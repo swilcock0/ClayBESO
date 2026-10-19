@@ -43,14 +43,25 @@ namespace ClayBeso.Optimisation
         /// <summary>Relative change of compliance over the convergence window.</summary>
         public double Tolerance { get; set; } = 1e-3;
 
-        public int ConvergenceWindow { get; set; } = 5;
+        /// <summary>Iterations compared by the convergence check. null = 3 in thickness mode, 5 in void mode.</summary>
+        public int? ConvergenceWindow { get; set; }
+
+        /// <summary>
+        /// Average each iteration's sensitivities with the previous ones (Huang &amp; Xie). Damps
+        /// oscillation of the discrete void mode but only slows the continuous thickness mode.
+        /// null = on in void mode, off in thickness mode.
+        /// </summary>
+        public bool? HistoryAveraging { get; set; }
+
+        public int EffectiveConvergenceWindow => ConvergenceWindow ?? (Mode == BesoMode.Thickness ? 3 : 5);
+        public bool EffectiveHistoryAveraging => HistoryAveraging ?? Mode == BesoMode.Void;
 
         // --- thickness mode
         public double MinThickness { get; set; } = 3.5;
         public double MaxThickness { get; set; } = 7;
 
         /// <summary>Maximum thickness change per iteration as a fraction of (tMax - tMin).</summary>
-        public double MoveLimit { get; set; } = 0.1;
+        public double MoveLimit { get; set; } = 0.3;
 
         /// <summary>Optimality-criteria damping exponent.</summary>
         public double Damping { get; set; } = 0.5;
@@ -228,7 +239,7 @@ namespace ClayBeso.Optimisation
 
             var raw = RawSensitivity(r);
             var filtered = _filter.Apply(raw);
-            if (_previousSensitivity != null)
+            if (_previousSensitivity != null && Settings.EffectiveHistoryAveraging)
                 for (int e = 0; e < filtered.Length; e++)
                     filtered[e] = 0.5 * (filtered[e] + _previousSensitivity[e]);
             _previousSensitivity = filtered;
@@ -287,7 +298,7 @@ namespace ClayBeso.Optimisation
 
         private bool CheckConvergence()
         {
-            int n = Settings.ConvergenceWindow;
+            int n = Settings.EffectiveConvergenceWindow;
             var h = ComplianceHistory;
             if (h.Count < 2 * n) return false;
             if (Math.Abs(DesignVolume - _targetVolume) > 1e-3 * _targetVolume) return false;
@@ -304,23 +315,37 @@ namespace ClayBeso.Optimisation
         private void UpdateThickness(double[] alpha, double targetVolume)
         {
             var st = Settings;
-            double move = st.MoveLimit * (st.MaxThickness - st.MinThickness);
-            double aMax = _design.Max(e => alpha[e]);
+            double span = st.MaxThickness - st.MinThickness;
+            double move = st.MoveLimit * span;
+            int nd = _design.Length;
             var t0 = _design.Select(e => Design[e]).ToArray();
-            var lo = new double[_design.Length];
-            var hi = new double[_design.Length];
-            for (int k = 0; k < _design.Length; k++)
+            var lo = new double[nd];
+            var hi = new double[nd];
+            for (int k = 0; k < nd; k++)
             {
                 lo[k] = Math.Max(st.MinThickness, t0[k] - move);
                 hi[k] = Math.Min(st.MaxThickness, t0[k] + move);
             }
 
-            if (aMax <= 0)
+            // The update scales each face by (alpha/lambda)^eta, so faces with alpha <= 0 can only
+            // shrink. Under self-weight a lightly loaded face can have alpha < 0 (it weighs more than
+            // it stiffens). If the other faces can't take the target volume even at their upper
+            // bounds, the update would silently lose clay. In that case shift every sensitivity by a
+            // constant: the optimality condition (equal alpha on all faces between the bounds) is
+            // unchanged, but the volume can be met again.
+            double aMin = _design.Min(e => alpha[e]);
+            double aMax = _design.Max(e => alpha[e]);
+            double reachable = 0;
+            for (int k = 0; k < nd; k++)
+                reachable += _model.Elements[_design[k]].Area * (alpha[_design[k]] > 0 ? hi[k] : lo[k]);
+            if (reachable < targetVolume * (1 - 1e-9) && aMax > aMin)
             {
-                // Every element's weight costs more than its stiffness gives: thin uniformly.
-                for (int k = 0; k < _design.Length; k++) Design[_design[k]] = lo[k];
-                return;
+                double shift = -aMin + 0.05 * (aMax - aMin);
+                alpha = (double[])alpha.Clone();
+                foreach (int e in _design) alpha[e] += shift;
+                aMax += shift;
             }
+            if (aMax <= 0) return; // all sensitivities equal and non-positive: nothing to rank
 
             double Volume(double lambda)
             {

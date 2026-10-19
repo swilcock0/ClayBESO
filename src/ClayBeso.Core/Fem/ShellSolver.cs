@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using ClayBeso.Geometry;
 
 namespace ClayBeso.Fem
@@ -40,6 +41,29 @@ namespace ClayBeso.Fem
             Weight[e] = t;
             Thickness[e] = t;
         }
+    }
+
+    /// <summary>Per-phase timing of one linear solve [ms].</summary>
+    public sealed class SolveTimings
+    {
+        public double Assembly { get; internal set; }
+        public double Factorisation { get; internal set; }
+        public double Substitution { get; internal set; }
+        public double PostProcessing { get; internal set; }
+
+        /// <summary>CG iterations preconditioned by an older factorisation (0 = direct solve).</summary>
+        public int CgIterations { get; internal set; }
+
+        /// <summary>True if this solve computed a new factorisation.</summary>
+        public bool Refactorised { get; internal set; }
+
+        /// <summary>Factorisations so far for this solver.</summary>
+        public int FactorisationCount { get; internal set; }
+        public double Total => Assembly + Factorisation + Substitution + PostProcessing;
+
+        public override string ToString() =>
+            $"assembly {Assembly:F0} ms, factorisation {Factorisation:F0} ms, " +
+            $"solve {Substitution:F0} ms ({(Refactorised ? "new factor" : CgIterations + " CG it")}), post {PostProcessing:F0} ms";
     }
 
     public sealed class AnalysisResult
@@ -83,6 +107,21 @@ namespace ClayBeso.Fem
 
         public ShellModel Model => _model;
         public int EquationCount => _system.EquationCount;
+        public int FactorNonZeros => _system.FactorNonZeros;
+
+        /// <summary>
+        /// Reuse the last factorisation as a CG preconditioner when the stiffness changes (optimisation
+        /// loops). Results are identical to a direct solve to a relative residual of 1e-10.
+        /// </summary>
+        public bool ReuseFactorisation
+        {
+            get => _system.ReuseFactorisation;
+            set => _system.ReuseFactorisation = value;
+        }
+        public int MatrixNonZeros => _system.MatrixNonZeros;
+
+        /// <summary>Wall-clock time of each phase of the last <see cref="Solve"/> [ms].</summary>
+        public SolveTimings LastTimings { get; } = new SolveTimings();
 
         public ShellSolver(ShellModel model)
         {
@@ -92,8 +131,10 @@ namespace ClayBeso.Fem
 
         public AnalysisResult Solve(ElementScaling s)
         {
+            var clock = Stopwatch.StartNew();
             int m = _model.ElementCount;
-            _system.AssembleAndFactor(s.Membrane, s.Bending);
+            _system.Assemble(s.Membrane, s.Bending);
+            LastTimings.Assembly = Lap(clock);
 
             var f = (double[])_model.FixedLoads.Clone();
             for (int e = 0; e < m; e++)
@@ -108,6 +149,12 @@ namespace ClayBeso.Fem
             }
 
             var u = _system.Solve(f);
+            double solveMs = Lap(clock);
+            LastTimings.Factorisation = _system.LastRefactorised ? _system.LastFactorMs : 0;
+            LastTimings.Substitution = solveMs - LastTimings.Factorisation;
+            LastTimings.CgIterations = _system.LastIterations;
+            LastTimings.Refactorised = _system.LastRefactorised;
+            LastTimings.FactorisationCount = _system.FactorisationCount;
             for (int d = 0; d < u.Length; d++)
                 if (double.IsNaN(u[d]) || double.IsInfinity(u[d]))
                     throw new InvalidOperationException(
@@ -139,7 +186,15 @@ namespace ClayBeso.Fem
                     wu += w.X * ue[6 * a] + w.Y * ue[6 * a + 1] + w.Z * ue[6 * a + 2];
                 res.WeightWork[e] = wu;
             }
+            LastTimings.PostProcessing = Lap(clock);
             return res;
+        }
+
+        private static double Lap(Stopwatch sw)
+        {
+            double ms = sw.Elapsed.TotalMilliseconds;
+            sw.Restart();
+            return ms;
         }
 
         public static void Gather(ShellElement el, double[] u, double[] ue)
