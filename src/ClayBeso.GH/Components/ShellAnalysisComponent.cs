@@ -40,6 +40,7 @@ namespace ClayBeso.GH.Components
             p.AddNumberParameter("Utilisation", "U", "σ / strength per face (needs Strength on the material).", GH_ParamAccess.list);
             p.AddMeshParameter("Preview", "P", "Deformed mesh coloured by von Mises stress.", GH_ParamAccess.item);
             p.AddTextParameter("Info", "I", "Summary.", GH_ParamAccess.item);
+            p.AddPointParameter("Max Stress Point", "σMax", "Centre of the face with the highest von Mises stress.", GH_ParamAccess.item);
         }
 
         protected override void SolveInstance(IGH_DataAccess da)
@@ -79,9 +80,18 @@ namespace ClayBeso.GH.Components
                     da.SetDataList(4, vm.Select(x => x / model.Material.Strength));
                 da.SetData(5, Preview.FaceColoured(model.Mesh, vm, s, out var used, range, r.Displacement, ds));
                 SetLegend("Von Mises stress", "MPa", used, legend);
+                int iMax = Array.IndexOf(vm, vm.Max());
+                var (mem, bend) = solver.StressParts(r, scaling, iMax);
+                var centre = model.Mesh.FaceCentroid(iMax);
+                double zMin = model.Mesh.Vertices.Min(v => v.Z), zTop = model.Mesh.Vertices.Max(v => v.Z);
+                var sorted = vm.OrderBy(x => x).ToArray();
+                da.SetData(7, RhinoConvert.ToPoint(centre, s));
                 da.SetData(6,
                     $"Equations: {solver.EquationCount}\nCompliance: {r.Compliance:G5} N·mm\n" +
-                    $"Max displacement: {r.MaxDisplacement:G4} mm\nMax von Mises: {vm.Max():G4} MPa");
+                    $"Max displacement: {r.MaxDisplacement:G4} mm\n" +
+                    $"Max von Mises: {vm.Max():G4} MPa at face {iMax}, {(centre.Z - zMin) / Math.Max(1e-9, zTop - zMin):P0} of the height, " +
+                    $"wall {t[iMax]:G3} mm (membrane {mem:G3} / bending {bend:G3} MPa)\n" +
+                    $"99th percentile: {sorted[(int)(0.99 * (sorted.Length - 1))]:G4} MPa, mean {vm.Average():G4} MPa");
             }
             catch (Exception ex)
             {

@@ -218,6 +218,22 @@ namespace ClayBeso.Fem
         }
 
         /// <summary>
+        /// Von Mises of the membrane part (N/t) and of the bending part (6M/t^2) of one element's
+        /// stress [MPa], to see which one drives it. Membrane stress scales with 1/t, bending with 1/t^2.
+        /// </summary>
+        public (double membrane, double bending) StressParts(AnalysisResult r, ElementScaling s, int e)
+        {
+            var ue = new double[18];
+            var el = _model.Elements[e];
+            Gather(el, r.U, ue);
+            el.UnitResultants(ue, out var n, out var mo);
+            double t = s.Thickness[e];
+            double Vm(double a, double b, double c) => Math.Sqrt(Math.Max(0, a * a + b * b - a * b + 3 * c * c));
+            double km = s.Membrane[e] / t, kb = 6 * s.Bending[e] / (t * t);
+            return (Vm(km * n[0], km * n[1], km * n[2]), Vm(kb * mo[0], kb * mo[1], kb * mo[2]));
+        }
+
+        /// <summary>
         /// Von Mises stress per element [MPa], the larger of the top and bottom surfaces.
         /// </summary>
         public double[] VonMises(AnalysisResult r, ElementScaling s)

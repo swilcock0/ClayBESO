@@ -203,6 +203,45 @@ public class BesoTests
     }
 
     [Fact]
+    public void PlaybackReturnsTheDesignAnalysedAtEachIteration()
+    {
+        var model = VaseModel(24, 16, lateral: 2);
+        var opt = new BesoOptimizer(model, new BesoSettings { MinThickness = 3.5, MaxThickness = 9, FilterRadius = 25 });
+        var initial = (double[])opt.Design.Clone();
+        while (opt.Step()) { }
+
+        Assert.Equal(opt.ComplianceHistory.Count, opt.DesignHistory.Count);
+        Assert.Equal(initial, opt.DesignAt(0, out int first));
+        Assert.Equal(1, first);
+        Assert.Same(opt.Design, opt.DesignAt(1, out int last));
+        Assert.Equal(opt.Iteration, last);
+
+        // Every snapshot reproduces the compliance recorded for it.
+        var solver = new ShellSolver(model);
+        for (int i = 0; i < opt.DesignHistory.Count; i++)
+        {
+            double c = solver.Solve(ElementScaling.FromThickness(opt.DesignHistory[i])).Compliance;
+            Assert.Equal(opt.ComplianceHistory[i], c, 6);
+        }
+    }
+
+    [Fact]
+    public void StressPartsCombineToVonMises()
+    {
+        var model = VaseModel(24, 16, lateral: 2);
+        var solver = new ShellSolver(model);
+        var s = ElementScaling.FromThickness(model.Thickness);
+        var r = solver.Solve(s);
+        var vm = solver.VonMises(r, s);
+        for (int e = 0; e < model.ElementCount; e += 37)
+        {
+            var (mem, bend) = solver.StressParts(r, s, e);
+            // surface von Mises lies between |membrane - bending| and membrane + bending
+            Assert.InRange(vm[e], Math.Abs(mem - bend) - 1e-12, mem + bend + 1e-12);
+        }
+    }
+
+    [Fact]
     public void VoidModeNeedsAVolumeFraction()
     {
         Assert.Throws<ArgumentException>(() => new BesoSettings { Mode = BesoMode.Void }.Validate());

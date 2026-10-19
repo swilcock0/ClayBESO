@@ -12,6 +12,12 @@ A Grasshopper plugin for Rhino 8 that:
 
 No other plugins or licences are needed.
 
+![ClayBESO on a vase under self-weight](docs/Example.png)
+
+*Left: the BESO wall thickness (3.5–7 mm) for a vase under self-weight. Clay is moved to the
+lower body, which carries the weight. Right: the resulting target layer heights (1–2.5 mm) with
+the non-planar layer toolpaths. Thick regions get lower, squashed layers.*
+
 ---
 
 ## Install
@@ -83,6 +89,8 @@ Surface/Brep ──Mesh (QuadRemesh or Mesh Surface)──► Shell Model ◄─
    - Leave **Volume Fraction** at 0 to redistribute the same clay, which is the usual case.
    - Set it above 0 only to change the amount of clay: the average wall becomes Vf × tMax.
    - Void mode always needs a volume fraction, because it removes material.
+   - **Playback**: connect a 0–1 slider to scrub through the iterations after a run (1 = final).
+     The thickness output follows the slider, so downstream components update as well.
 5. **Layer Heights**: set **hMin / hMax** from your nozzle (see the table below) and choose how
    thickness turns into layer height:
    - *Mapping 0, constant bead area*: flow and feed stay fixed and only the nozzle height

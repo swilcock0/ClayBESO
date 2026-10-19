@@ -51,6 +51,7 @@ namespace ClayBeso.GH.Components
             p.AddNumberParameter("Admission Ratio", "AR", "Void mode: max fraction of volume re-added per iteration.", GH_ParamAccess.item, 0.02);
             p.AddIntervalParameter("Colour Range", "CR", "Fix the thickness colour scale [mm]. Empty = tMin to tMax in thickness mode, min-max in void mode.", GH_ParamAccess.item);
             p.AddBooleanParameter("Legend", "Lg", "Draw a colour legend in the viewport.", GH_ParamAccess.item, true);
+            p.AddNumberParameter("Playback", "Pb", "Show the design at a point of the run: 0 = first iteration, 1 = final (default). Connect a 0-1 slider to scrub through the optimisation. Thickness, Solid and the preview follow it; it never restarts the run.", GH_ParamAccess.item, 1.0);
             for (int i = 1; i < p.ParamCount; i++) p[i].Optional = true;
         }
 
@@ -87,6 +88,8 @@ namespace ClayBeso.GH.Components
             da.GetData(11, ref ar);
             bool legend = true;
             da.GetData(13, ref legend);
+            double playback = 1.0;
+            da.GetData(14, ref playback);
             var range = ReadRange(da, 12, mode == 1 ? ((double, double)?)null : (tMin, tMax));
 
             var model = RhinoConvert.Unwrap<ShellModel>(modelObj);
@@ -152,13 +155,14 @@ namespace ClayBeso.GH.Components
             }
 
             if (_error != null) AddRuntimeMessage(GH_RuntimeMessageLevel.Error, _error);
-            Output(da, range, legend);
+            Output(da, range, legend, playback);
         }
 
-        private void Output(IGH_DataAccess da, (double lo, double hi)? range, bool legend)
+        private void Output(IGH_DataAccess da, (double lo, double hi)? range, bool legend, double playback)
         {
-            var thickness = _opt.EffectiveThickness();
-            var solid = _opt.Solid();
+            var design = _opt.DesignAt(playback, out int shown);
+            var thickness = _opt.EffectiveThickness(design);
+            var solid = _opt.Solid(design);
             da.SetDataList(0, thickness);
             da.SetDataList(1, solid);
             if (_opt.Sensitivity != null) da.SetDataList(2, _opt.Sensitivity);
@@ -167,15 +171,22 @@ namespace ClayBeso.GH.Components
             SetLegend("Wall thickness", "mm", used, legend);
             da.SetDataList(4, _opt.ComplianceHistory);
             da.SetDataList(5, _opt.VolumeFractionHistory);
-            da.SetData(6, _opt.Iteration);
+            da.SetData(6, shown);
             da.SetData(7, _opt.Converged);
+
+            if (shown != _opt.Iteration)
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Remark,
+                    $"Playback: showing iteration {shown} of {_opt.Iteration}. Downstream components get this design; set Playback to 1 for the final one.");
 
             string state = _opt.Converged ? "converged"
                 : _opt.Iteration >= _opt.Settings.MaxIterations ? "stopped at iteration limit"
                 : _opt.Iteration == 0 ? "ready (set Run = true)" : "running / paused";
             string c = _opt.ComplianceHistory.Count > 0 ? $"{_opt.ComplianceHistory.Last():G5} N·mm" : "-";
             da.SetData(8,
-                $"{_opt.Settings.Mode} mode, {state}\nIteration {_opt.Iteration}\n" +
+                $"{_opt.Settings.Mode} mode, {state}\nIteration {_opt.Iteration}" +
+                (shown != _opt.Iteration
+                    ? $" (PLAYBACK: showing iteration {shown}, compliance {_opt.ComplianceHistory[shown - 1]:G5} N·mm)\n"
+                    : "\n") +
                 (_opt.Settings.KeepVolume
                     ? $"Redistributing the starting clay: average wall {_opt.TargetAverageThickness:F2} mm\n"
                     : $"Volume fraction {_opt.CurrentVolumeFraction:F3} (target {_opt.Settings.VolumeFraction:F3}" +

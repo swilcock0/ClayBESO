@@ -193,16 +193,42 @@ namespace ClayBeso.Optimisation
             _model.Elements[e].Area * (Settings.Mode == BesoMode.Thickness ? x : (x >= 1 ? _model.Thickness[e] : 0));
 
         /// <summary>Effective wall thickness per element for downstream use (0 for voids).</summary>
-        public double[] EffectiveThickness()
+        public double[] EffectiveThickness() => EffectiveThickness(Design);
+
+        /// <summary>Effective wall thickness of any design snapshot, e.g. from <see cref="DesignHistory"/>.</summary>
+        public double[] EffectiveThickness(double[] design)
         {
             var t = new double[_model.ElementCount];
             for (int e = 0; e < t.Length; e++)
-                t[e] = Settings.Mode == BesoMode.Thickness ? Design[e] : (Design[e] >= 1 ? _model.Thickness[e] : 0);
+                t[e] = Settings.Mode == BesoMode.Thickness ? design[e] : (design[e] >= 1 ? _model.Thickness[e] : 0);
             return t;
         }
 
         /// <summary>Solid/void flag per element (all true in thickness mode).</summary>
-        public bool[] Solid() => Design.Select(x => Settings.Mode == BesoMode.Thickness || x >= 1).ToArray();
+        public bool[] Solid() => Solid(Design);
+
+        public bool[] Solid(double[] design) => design.Select(x => Settings.Mode == BesoMode.Thickness || x >= 1).ToArray();
+
+        /// <summary>
+        /// The design analysed at each iteration (index i matches <see cref="ComplianceHistory"/>[i]),
+        /// for playing back the optimisation.
+        /// </summary>
+        public List<double[]> DesignHistory { get; } = new List<double[]>();
+
+        /// <summary>
+        /// Design at a point of the run: 0 = first iteration, 1 = the current (final) design.
+        /// </summary>
+        public double[] DesignAt(double fraction, out int iteration)
+        {
+            if (fraction >= 1 || DesignHistory.Count == 0)
+            {
+                iteration = Iteration;
+                return Design;
+            }
+            int i = (int)Math.Round(Math.Max(0, fraction) * (DesignHistory.Count - 1));
+            iteration = i + 1;
+            return DesignHistory[i];
+        }
 
         private ElementScaling BuildScaling()
         {
@@ -232,6 +258,7 @@ namespace ClayBeso.Optimisation
         {
             if (Finished) return false;
 
+            DesignHistory.Add((double[])Design.Clone());
             var r = _solver.Solve(Scaling);
             LastResult = r;
             ComplianceHistory.Add(r.Compliance);

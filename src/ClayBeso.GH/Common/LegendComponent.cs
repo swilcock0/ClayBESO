@@ -67,14 +67,15 @@ namespace ClayBeso.GH.Common
             Draw(args, _legend, slot);
         }
 
-        private const int PanelWidth = 150, PanelHeight = 236, Margin = 12;
+        // TopOffset keeps the panel clear of Rhino's viewport title ("Perspective" etc.) in the top-left.
+        private const int PanelWidth = 150, PanelHeight = 236, Margin = 12, TopOffset = 40;
         private const int BarWidth = 22, BarHeight = 170, Steps = 48, Ticks = 5;
 
         private static void Draw(IGH_PreviewArgs args, Legend lg, int slot)
         {
             var d = args.Display;
             int x0 = Margin + slot * (PanelWidth + Margin);
-            int y0 = Margin;
+            int y0 = TopOffset;
             var text = Color.FromArgb(30, 30, 30);
 
             d.Draw2dRectangle(new Rectangle(x0, y0, PanelWidth, PanelHeight),
