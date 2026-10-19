@@ -7,8 +7,10 @@ A Grasshopper plugin for Rhino 8 that:
 2. **optimises** it with **BESO**, either grading the **wall thickness** (no holes) or
    removing material to make **perforations**,
 3. turns the optimised thickness into a **variable layer-height field** and slices the shell
-   into **non-planar layer toolpaths**: thick, highly loaded regions get low, squashed layers
-   (wider bead), and lightly loaded regions get tall, narrow layers.
+   into **non-planar layer toolpaths**, with a **flow factor** at every point. Highly loaded
+   regions get a wider bead and a taller layer, with the flow raised to supply both. For
+   fixed-flow printers there are mappings where a thick wall comes from squashing the bead
+   instead.
 
 No other plugins or licences are needed.
 
@@ -16,7 +18,9 @@ No other plugins or licences are needed.
 
 *Left: the BESO wall thickness (3.5–7 mm) for a vase under self-weight. Clay is moved to the
 lower body, which carries the weight. Right: the resulting target layer heights (1–2.5 mm) with
-the non-planar layer toolpaths. Thick regions get lower, squashed layers.*
+the non-planar layer toolpaths. This image uses the fixed-flow "constant bead area" mapping
+(thick regions get lower, squashed layers). The default is now the proportional mapping, where
+thick regions get taller layers and more flow.*
 
 ---
 
@@ -42,12 +46,17 @@ Manual install:
 
 ## Components
 
+Every input and output of every component (type, default, units) is listed in
+**[docs/COMPONENTS.md](docs/COMPONENTS.md)**.
+
 | Tab | Component | What it does |
 |---|---|---|
 | 1 Model | **Clay Material** | E [MPa], ν, density [kg/m³], optional strength [MPa]. Defaults = green clay. |
 | 1 Model | **Shell Model** | Mesh + material + thickness [mm] + supports (auto base) + loads → model. |
 | 2 Analyse | **Shell Analysis** | Displacements, von Mises stress, compliance, deformed preview. |
+| 2 Analyse | **Interlayer Check** | Stresses across the printed layer interfaces vs a bond strength that drops with layer height. |
 | 3 Optimise | **Shell BESO** | Live BESO loop (Run / Reset). Mode 0 = thickness, 1 = void. |
+| 4 Print | **Layer Rule** | One thickness → layer-height rule shared by Layer Heights, Shell BESO and Shell Analysis. |
 | 4 Print | **Layer Heights** | Thickness per face → target layer height per vertex. |
 | 4 Print | **Non-planar Layers** | Layer height field → layer polylines + per-point height/width. |
 | 4 Print | **Wall Preview** | Thickened solid wall for visual checking. |
@@ -92,12 +101,21 @@ Surface/Brep ──Mesh (QuadRemesh or Mesh Surface)──► Shell Model ◄─
    - **Playback**: connect a 0–1 slider to scrub through the iterations after a run (1 = final).
      The thickness output follows the slider, so downstream components update as well.
 5. **Layer Heights**: set **hMin / hMax** from your nozzle (see the table below) and choose how
-   thickness turns into layer height:
+   thickness turns into layer height. With flow control (e.g. the WASP 40100), both bead width
+   and layer height can follow the design, and the flow factor supplies the clay:
+   - *Mapping 3, proportional* (**default**): the thinnest wall gets hMin and the thickest gets
+     hMax. Connect BESO's tMin–tMax to **Thickness Range** so the mapping is anchored. Otherwise
+     a nearly uniform wall would still be spread over the whole height range.
+   - *Mapping 2, constant aspect ratio* (h = k·t): also rises with thickness, and keeps the same
+     bead shape (height/width) everywhere.
+
+   For fixed flow (no flux control):
    - *Mapping 0, constant bead area*: flow and feed stay fixed and only the nozzle height
-     changes. A thicker wall means a lower, more squashed layer.
-   - *Mapping 1, linear*: the thickest wall gets hMin and the thinnest gets hMax.
-   - *Mapping 2, constant aspect ratio* (h = k·t): every bead is squashed the same amount.
-     This needs flow control, so use it when you can modulate flow, as on the WASP.
+     changes, so a thicker wall comes from a lower, more squashed layer.
+   - *Mapping 1, linear inverse*: the thickest wall gets hMin and the thinnest gets hMax.
+
+   Structurally, the clay per unit of wall area is set by the **thickness**. A taller layer puts
+   more clay down per pass and gives fewer layers over the same height.
 6. **Non-planar Layers**: produces one branch per layer.
    - *Method 0 (Conforming)*: every layer is a closed loop and the last layer is the rim.
      Heights are matched as closely as the geometry allows. Check the *Info* and *Preview*
@@ -126,6 +144,14 @@ The component defaults are set for a 3 mm nozzle. Keep the **flow factor** range
 your extruder can follow quickly. Compare the min–max shown in the *Info* output against what
 you see in a test print.
 
+**Walls thicker than one bead.** The tMax values above assume a single straight bead. Paths that
+move back and forth within each layer can build much wider walls from the same nozzle. For
+example, WeaveSlicer (Friedman-Gerlicz et al., CHI 2024) uses a sinusoidal path whose amplitude
+sets the wall thickness, with reported walls of 2–20 mm. If you plan such paths, you can give
+BESO a larger tMax and use its thickness field to drive the oscillation. ClayBESO doesn't
+generate these paths itself: the thickness field and the layer curves are the inputs for your
+own path design.
+
 ## Colours and legends
 
 Every component with a coloured preview draws a **legend** (colour bar with values) in the top
@@ -144,6 +170,56 @@ Defaults when nothing is connected:
 
 Fix the range to compare runs. With an automatic range, a tiny variation fills the whole
 blue-to-red scale.
+
+## Interlayer check (layer height in the structure)
+
+The shell analysis treats the wall as solid. Printed clay is weakest **between layers**: a bead
+of width w and height h has rounded sides, so it bonds to the next layer over a flat strip only
+about w − h wide. The **Interlayer Check** component:
+
+1. takes the wall thickness (bead width w) and the **Layer Field** φ from Non-planar Layers. The
+   realised layer height h and the stacking direction (across the layers, following the real
+   non-planar layers) come from φ;
+2. rotates the analysis stresses into the layer directions and puts the across-layer force and
+   moment through the bonded strip only, a fraction **c = (w − h)/w** of the wall;
+3. reports a **utilisation**, the worst of
+   - **bond**: tension + shear on the strip vs **η·f**, and
+   - **bearing**: compression on the narrowed strip vs **f**, which matters for wet clay
+     carrying its own weight.
+
+Inputs: clay **strength f** (or set it on Clay Material) and **bond efficiency η**. η is the
+interface strength per unit contact area relative to the bulk clay. Leave it at 1 to see the
+geometric effect alone, then calibrate it from tests, for example by comparing printed samples
+pulled across the layers with solid ones.
+
+With the same wall, taller layers mean less contact and higher utilisation. On a 6 mm wall,
+going from 1 mm to 3 mm layers raises the peak utilisation about 2.7× in the test case. With
+*Orthotropic* on (the default), the analysis inside the check also treats the wall as weaker across
+the layers, so stresses redistribute as they would in the print.
+
+## Printed layers inside the optimisation
+
+Connect a **Layer Rule** to Shell BESO (and the same rule to Layer Heights and Shell Analysis) and
+BESO optimises a wall that is weaker across its layers. Its across-layer stiffness is scaled by
+**κ = η · (t − h(t))/t**, using the same bond model as the Interlayer Check, with h(t) from the rule.
+The Layer Rule's outputs then match what is printed:
+
+```
+Layer Rule ──► Shell BESO ──t──► Layer Heights ──h──► Non-planar Layers
+     └──────────────────────────────┘ (same rule on both)
+```
+
+- Set the rule's **Thickness Range** to BESO's tMin–tMax, so every component maps thickness the
+  same way (the components warn if it is missing).
+- Layer directions are taken as horizontal inside BESO; the Interlayer Check uses the real
+  non-planar layers afterwards.
+- With the proportional mapping, h grows with t, so the contact fraction c stays roughly constant
+  and κ mostly acts as a near-uniform across-layer weakening (η × 0.64–0.71 with the defaults). That
+  still changes where BESO puts clay: in the test case the layer-aware design is about 2% stiffer
+  than the layer-naive one when both are judged with layers. Mappings where h does not follow t
+  (e.g. constant bead area) make κ vary with thickness, and BESO then trades layer contact
+  against wall thickness.
+- Shell BESO's Info shows the rule, η and the κ range.
 
 ## Units
 
@@ -172,5 +248,5 @@ optimised *shape* does not depend on it. It matters for checking deflections and
   layers, so check printability.
 - No G-code output yet. The plugin gives you polylines with per-point heights and flow factors.
 
-See `docs/THEORY.md` for the maths and references, `CONTRIBUTING.md` to work on the code, and
+See `docs/THEORY.md` for the maths and references, `docs/VALIDATION.md` for the experimental validation plan, `CONTRIBUTING.md` to work on the code, and
 `AGENTS.md` for the rules AI assistants follow in this repo.

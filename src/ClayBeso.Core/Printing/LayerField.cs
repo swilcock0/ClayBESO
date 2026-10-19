@@ -74,16 +74,7 @@ namespace ClayBeso.Printing
             if (baseVertices == null || baseVertices.Count == 0) throw new ArgumentException("No base vertices.");
             up = up.Unit();
 
-            // Slowness: layers per unit surface length. In vertical mode a surface step ds rises by
-            // ds * |grad_s z|, so a sloping wall packs layers more sparsely along the surface.
-            var factor = new double[mesh.VertexCount];
-            var vn = mesh.VertexNormals;
-            for (int v = 0; v < factor.Length; v++)
-            {
-                if (!vertical) { factor[v] = 1; continue; }
-                double nz = Vec3.Dot(vn[v], up);
-                factor[v] = Math.Max(0.05, Math.Sqrt(Math.Max(0, 1 - nz * nz)));
-            }
+            var factor = SpacingFactors(mesh, up, vertical);
             var slowness = new double[mesh.VertexCount];
             for (int v = 0; v < slowness.Length; v++) slowness[v] = factor[v] / layerHeight[v];
 
@@ -140,18 +131,42 @@ namespace ClayBeso.Printing
         /// Layer height actually produced on each face: 1/|grad phi|, converted to the same
         /// measure (vertical or along-surface) as the target.
         /// </summary>
-        public double[] RealisedFaceHeight()
+        public double[] RealisedFaceHeight() => RealisedFaceHeight(Mesh, Phi, SpacingFactor);
+
+        /// <summary>Realised layer height per face from any layer field phi (e.g. read back from Grasshopper).</summary>
+        public static double[] RealisedFaceHeight(TriMesh mesh, IList<double> phi, Vec3 up, bool vertical) =>
+            RealisedFaceHeight(mesh, phi, SpacingFactors(mesh, up.Unit(), vertical));
+
+        private static double[] RealisedFaceHeight(TriMesh mesh, IList<double> phi, double[] spacingFactor)
         {
-            var ops = new MeshOperators(Mesh);
-            var h = new double[Mesh.FaceCount];
+            var ops = new MeshOperators(mesh);
+            var h = new double[mesh.FaceCount];
             for (int f = 0; f < h.Length; f++)
             {
-                var t = Mesh.Faces[f];
-                double g = ops.FaceGradient(f, Phi).Length;
-                double fac = (SpacingFactor[t[0]] + SpacingFactor[t[1]] + SpacingFactor[t[2]]) / 3.0;
+                var t = mesh.Faces[f];
+                double g = ops.FaceGradient(f, phi).Length;
+                double fac = (spacingFactor[t[0]] + spacingFactor[t[1]] + spacingFactor[t[2]]) / 3.0;
                 h[f] = g > 1e-12 ? fac / g : double.PositiveInfinity;
             }
             return h;
+        }
+
+        /// <summary>
+        /// Per-vertex factor from spacing along the wall to vertical spacing. In vertical mode a
+        /// surface step ds rises by ds * |grad_s z|, so a sloping wall packs layers more sparsely
+        /// along the surface.
+        /// </summary>
+        internal static double[] SpacingFactors(TriMesh mesh, Vec3 up, bool vertical)
+        {
+            var factor = new double[mesh.VertexCount];
+            var vn = mesh.VertexNormals;
+            for (int v = 0; v < factor.Length; v++)
+            {
+                if (!vertical) { factor[v] = 1; continue; }
+                double nz = Vec3.Dot(vn[v], up);
+                factor[v] = Math.Max(0.05, Math.Sqrt(Math.Max(0, 1 - nz * nz)));
+            }
+            return factor;
         }
     }
 }

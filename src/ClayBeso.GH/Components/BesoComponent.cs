@@ -52,6 +52,8 @@ namespace ClayBeso.GH.Components
             p.AddIntervalParameter("Colour Range", "CR", "Fix the thickness colour scale [mm]. Empty = tMin to tMax in thickness mode, min-max in void mode.", GH_ParamAccess.item);
             p.AddBooleanParameter("Legend", "Lg", "Draw a colour legend in the viewport.", GH_ParamAccess.item, true);
             p.AddNumberParameter("Playback", "Pb", "Show the design at a point of the run: 0 = first iteration, 1 = final (default). Connect a 0-1 slider to scrub through the optimisation. Thickness, Solid and the preview follow it; it never restarts the run.", GH_ParamAccess.item, 1.0);
+            p.AddGenericParameter("Layer Rule", "Rule", "Optional Layer Rule (from the Layer Rule component). When connected, the wall is weaker across its layers: across-layer stiffness × κ = η·(t − h)/t, with h from the rule. Use the same rule on Layer Heights.", GH_ParamAccess.item);
+            p.AddNumberParameter("Bond Efficiency", "η", "With a Layer Rule: interface efficiency 0-1 (calibrate from tests, see docs/VALIDATION.md §4). 1 = only the contact geometry weakens the wall.", GH_ParamAccess.item, 1.0);
             for (int i = 1; i < p.ParamCount; i++) p[i].Optional = true;
         }
 
@@ -90,6 +92,11 @@ namespace ClayBeso.GH.Components
             da.GetData(13, ref legend);
             double playback = 1.0;
             da.GetData(14, ref playback);
+            object ruleObj = null;
+            double eta = 1.0;
+            da.GetData(15, ref ruleObj);
+            da.GetData(16, ref eta);
+            var rule = RhinoConvert.Unwrap<Printing.LayerRule>(ruleObj);
             var range = ReadRange(da, 12, mode == 1 ? ((double, double)?)null : (tMin, tMax));
 
             var model = RhinoConvert.Unwrap<ShellModel>(modelObj);
@@ -106,8 +113,10 @@ namespace ClayBeso.GH.Components
                 MaxIterations = maxIt,
                 Penalty = pen,
                 MaxAdmissionRatio = ar,
+                LayerRule = rule,
+                Bond = new BondModel(Math.Max(1e-6, Math.Min(1, eta))),
             };
-            string sig = string.Join("|", new object[] { mode, vf, tMin, tMax, er, radius, maxIt, pen, ar }
+            string sig = string.Join("|", new object[] { mode, vf, tMin, tMax, er, radius, maxIt, pen, ar, rule?.ToString() ?? "no layers", eta }
                 .Select(o => Convert.ToString(o, CultureInfo.InvariantCulture)));
 
             // Any change to the model or settings restarts the optimisation.
@@ -192,7 +201,16 @@ namespace ClayBeso.GH.Components
                     : $"Volume fraction {_opt.CurrentVolumeFraction:F3} (target {_opt.Settings.VolumeFraction:F3}" +
                       (_opt.Settings.Mode == BesoMode.Thickness ? $" = average wall {_opt.TargetAverageThickness:F2} mm)\n" : ")\n")) +
                 $"Compliance {c}\nThickness {thickness.Where(t => t > 0).DefaultIfEmpty(0).Min():F2}-{thickness.Max():F2} mm" +
-                (_opt.Iteration > 0 ? $"\nLast solve: {_opt.Solver.LastTimings.Total:F0} ms ({_opt.Solver.LastTimings})" : ""));
+                (_opt.Iteration > 0 ? $"\nLast solve: {_opt.Solver.LastTimings.Total:F0} ms ({_opt.Solver.LastTimings})" : "") +
+                LayerInfo(design, solid));
+        }
+
+        private string LayerInfo(double[] design, bool[] solid)
+        {
+            if (_opt.Rule == null) return "\nPrinted layers: ignored (connect a Layer Rule to include them)";
+            var kappa = _opt.ScalingFor(design).Across.Where((k, e) => solid[e]).DefaultIfEmpty(1).ToArray();
+            return $"\nPrinted layers: {_opt.Rule}, η = {_opt.Settings.Bond.Efficiency:G3}\n" +
+                   $"  across-layer stiffness κ {kappa.Min():F2}-{kappa.Max():F2}";
         }
     }
 }

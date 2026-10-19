@@ -14,7 +14,7 @@ namespace ClayBeso.GH
         public override string AuthorName => "Politecnico di Milano";
         public override string AuthorContact => "";
         public override Bitmap Icon => Common.Icons.Get("ClayBeso");
-        public override string Version => "0.2.0";
+        public override string Version => "0.3.0";
     }
 
     /// <summary>Registers the tab icon and short name shown when Grasshopper's tabs are collapsed.</summary>

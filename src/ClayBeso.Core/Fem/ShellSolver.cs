@@ -19,12 +19,20 @@ namespace ClayBeso.Fem
         /// <summary>Physical wall thickness used for stress recovery [mm].</summary>
         public double[] Thickness { get; }
 
+        /// <summary>
+        /// Across-layer stiffness factor kappa per element (1 = isotropic). Only has an effect on a
+        /// model with <see cref="ShellModel.EnableLayerAnisotropy"/>.
+        /// </summary>
+        public double[] Across { get; }
+
         public ElementScaling(int count)
         {
             Membrane = new double[count];
             Bending = new double[count];
             Weight = new double[count];
             Thickness = new double[count];
+            Across = new double[count];
+            for (int e = 0; e < count; e++) Across[e] = 1.0;
         }
 
         public static ElementScaling FromThickness(IList<double> t)
@@ -77,14 +85,20 @@ namespace ClayBeso.Fem
         /// <summary>Compliance F.U [N*mm].</summary>
         public double Compliance { get; internal set; }
 
-        /// <summary>u_e^T Km_e u_e per element (unit thickness, no 1/2).</summary>
+        /// <summary>u_e^T Km_e u_e per element, with Km_e the effective membrane stiffness for the element's kappa (unit thickness, no 1/2).</summary>
         public double[] MembraneWork { get; internal set; }
 
-        /// <summary>u_e^T Kb_e u_e per element (unit thickness, no 1/2).</summary>
+        /// <summary>u_e^T Kb_e u_e per element, with Kb_e the effective bending stiffness for the element's kappa (unit thickness, no 1/2).</summary>
         public double[] BendingWork { get; internal set; }
 
         /// <summary>u_e . w_e per element: work of the unit self-weight load.</summary>
         public double[] WeightWork { get; internal set; }
+
+        /// <summary>u_e^T Km1_e u_e per element: across-layer membrane part (0 if not layered).</summary>
+        public double[] AcrossMembraneWork { get; internal set; }
+
+        /// <summary>u_e^T Kb1_e u_e per element: across-layer bending part (0 if not layered).</summary>
+        public double[] AcrossBendingWork { get; internal set; }
 
         public Vec3 Displacement(int node) => new Vec3(U[6 * node], U[6 * node + 1], U[6 * node + 2]);
 
@@ -133,7 +147,7 @@ namespace ClayBeso.Fem
         {
             var clock = Stopwatch.StartNew();
             int m = _model.ElementCount;
-            _system.Assemble(s.Membrane, s.Bending);
+            _system.Assemble(s.Membrane, s.Bending, s.Across);
             LastTimings.Assembly = Lap(clock);
 
             var f = (double[])_model.FixedLoads.Clone();
@@ -167,6 +181,8 @@ namespace ClayBeso.Fem
                 MembraneWork = new double[m],
                 BendingWork = new double[m],
                 WeightWork = new double[m],
+                AcrossMembraneWork = new double[m],
+                AcrossBendingWork = new double[m],
             };
 
             double c = 0;
@@ -180,6 +196,17 @@ namespace ClayBeso.Fem
                 Gather(el, u, ue);
                 res.MembraneWork[e] = Quad(el.Km, ue);
                 res.BendingWork[e] = Quad(el.Kb, ue);
+                if (el.Km1 != null)
+                {
+                    // Work of the effective stiffness Km + (kappa - 1) Km1, plus the across-layer parts
+                    // on their own for the kappa sensitivity.
+                    double dk = s.Across[e] - 1;
+                    double em1 = Quad(el.Km1, ue), eb1 = Quad(el.Kb1, ue);
+                    res.AcrossMembraneWork[e] = em1;
+                    res.AcrossBendingWork[e] = eb1;
+                    res.MembraneWork[e] += dk * em1;
+                    res.BendingWork[e] += dk * eb1;
+                }
                 var w = _model.UnitSelfWeight[e];
                 double wu = 0;
                 for (int a = 0; a < 3; a++)
@@ -226,7 +253,7 @@ namespace ClayBeso.Fem
             var ue = new double[18];
             var el = _model.Elements[e];
             Gather(el, r.U, ue);
-            el.UnitResultants(ue, out var n, out var mo);
+            el.UnitResultants(ue, out var n, out var mo, s.Across[e]);
             double t = s.Thickness[e];
             double Vm(double a, double b, double c) => Math.Sqrt(Math.Max(0, a * a + b * b - a * b + 3 * c * c));
             double km = s.Membrane[e] / t, kb = 6 * s.Bending[e] / (t * t);
@@ -245,7 +272,7 @@ namespace ClayBeso.Fem
             {
                 var el = _model.Elements[e];
                 Gather(el, r.U, ue);
-                el.UnitResultants(ue, out var n, out var mo);
+                el.UnitResultants(ue, out var n, out var mo, s.Across[e]);
                 double t = s.Thickness[e];
                 double best = 0;
                 for (int side = -1; side <= 1; side += 2)

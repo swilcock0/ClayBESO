@@ -76,25 +76,31 @@ The analytic sensitivities are checked against central finite differences in the
 
 ## 4. Layer heights from thickness
 
-With constant extrusion flow Q and feed v, the bead cross-section `A_b = Q/v` is constant.
-A squashed bead of width w and height h has `w·h ≈ A_b`. Setting the bead width equal to the
-optimised wall thickness gives:
+The bead width is the optimised wall thickness, `w = t`. The bead cross-section is modelled as a
+stadium (rectangle with semicircular sides, as in Slic3r):
+`A_b(w, h) = (w − h) h + π h²/4` for `w ≥ h`. The extrusion flow is `Q = A_b · v` for feed v.
 
-```
-h(x) = clamp(A_b / t(x), hMin, hMax)
-```
+**With flow control** (e.g. the WASP 40100) width and height are independent, and both can follow
+the design. The flow supplies whatever bead they need:
 
-So you get a variable wall thickness **without changing flow or speed**, only the layer height.
-The field is averaged to vertices and smoothed.
+- Mapping 3, *proportional* (default): `h = hMin + (hMax − hMin)·(t − t_lo)/(t_hi − t_lo)`, with
+  `[t_lo, t_hi]` the optimiser's thickness range when given. A higher-demand region gets a wider
+  **and** taller bead.
+- Mapping 2, *constant aspect ratio*: `h = k t`, the same bead shape everywhere.
 
-The bead is modelled as a stadium (rectangle with semicircular sides, as in Slic3r):
-`A_b(w, h) = (w − h) h + π h²/4` for `w ≥ h`. Mapping 0 solves `A_b(t, h) = A` for h.
+The slicer reports at every path point `A_b(w, h_realised)` and the flow factor
+`A_b / A_nominal`. Because the realised height is used, any height error from the conforming
+layer field is compensated by flow, and the wall width still equals the optimised thickness.
 
-**With flow control** (e.g. the WASP 40100) width and height are independent. Mapping 2 sets
-`h = k t` (constant squash ratio), and the slicer reports at every path point
-`A_b(w, h_realised)` and the flow factor `A_b / A_nominal`. Because the realised height is used,
-any height error from the conforming layer field is compensated by flow, and the wall width
-still equals the optimised thickness.
+The clay per unit of wall area, which is what the shell model sees, is `t`. Layer height doesn't
+change it. It sets the clay per pass and the number of layers. The structural analysis
+currently ignores layer height (e.g. interlayer bond strength).
+
+**Fixed flow** (Q and v constant, so `A_b` constant): the only way to get a wider bead is a lower
+layer. Mapping 0 solves `A_b(t, h) = A` for h (thick walls come from squashing), and mapping 1 is
+the linear version of the same idea.
+
+All mappings are averaged to vertices, clamped to [hMin, hMax] and smoothed.
 
 ## 5. Non-planar layers
 
@@ -118,6 +124,78 @@ measured along the wall.
 
 Iso-curves are extracted per triangle and chained through shared edges. Closed loops are
 oriented counter-clockwise about +Z and start at the seam direction.
+
+## 6. Interlayer check
+
+**Bond model.** A stadium bead of width w and height h shares a flat strip of width w − h with the
+next layer, so the bonded fraction of the wall is
+
+```
+c = clamp((w − h)/w, c_min, 1),     w = t (wall thickness),  h = realised layer height
+```
+
+A bond efficiency η ∈ (0, 1] scales the strength per unit contact area (calibrated from tests).
+
+**Layer axes.** On each face, the stacking direction is `s = ∇φ/|∇φ|` (in the face plane), and the
+along-layer direction is `a = n × s`. The realised layer height is `h = c_z/|∇φ|`, as in section 5.
+
+**Interface stresses.** The membrane forces N and moments M (per unit length, local axes) give
+`N_ss = sᵀNs`, `N_as = aᵀNs`, and likewise for M. Only the contact strip of width `c t` carries them:
+
+```
+σ_n = N_ss/(c t) ± 6 M_ss/(c t)²        τ = N_as/(c t) ± 6 M_as/(c t)²     (both faces)
+```
+
+**Utilisation** (worst over both faces):
+
+```
+U_bond    = sqrt(⟨σ_n⟩₊² + τ²) / (η f)
+U_bearing = ⟨−σ_n⟩₊ / f
+U         = max(U_bond, U_bearing)
+```
+
+Faces without a layer direction (e.g. a flat floor at φ = 0) are not checked.
+
+Validation: on a self-weighted cylinder the bearing stress at mid-height matches the hand
+calculation `γ (H − z)/c` to 1.5%. Bond utilisation scales with 1/η.
+
+## 7. Printed layers in the stiffness (orthotropic wall)
+
+**Material.** With layer axes a (along the bead) and s (across the layers), the plane-stress
+matrix is split linearly in an across-layer factor κ:
+
+```
+Q(κ) = Q0 + κ·Q1,    Q1 = [[0, νE', 0], [νE', E', 0], [0, 0, G]]   (a, s axes),   E' = E/(1 − ν²)
+```
+
+κ = 1 gives the isotropic matrix exactly. κ < 1 scales the across-layer modulus, the Poisson
+coupling and the shear; Q stays positive definite for κ > 0. Q1 is rotated into each element's
+axes (standard Q̄ transformation), so element stiffness is
+
+```
+K_e = t·(Km + (κ − 1)·Km1) + t³·(Kb + (κ − 1)·Kb1)
+```
+
+with Km1 and Kb1 precomputed once per element (CST and DKT with Q1 and Q1/12). In BESO the
+layer direction is horizontal (a = n × z); faces within ~3° of flat stay isotropic. The Interlayer
+Check's orthotropic option uses the same matrices.
+
+**Bond.** κ = η·c(t, h) with c = (t − h)/t, the bond model of section 6. Inside BESO, h = h(t) from
+the shared Layer Rule (automatic thickness range = tMin..tMax). The Interlayer Check uses the
+realised heights from φ.
+
+**Sensitivity** (thickness mode). With κ = κ(t):
+
+```
+dK/dt = (Km + (κ − 1)Km1) + 3t²(Kb + (κ − 1)Kb1) + κ'(t)·(t·Km1 + t³·Kb1)
+```
+
+so α gains `κ'(t)·(t·u'Km1u + t³·u'Kb1u)/A`, with κ' by central difference. Checked against
+finite differences for the proportional and constant-bead-area mappings, and in void mode (κ
+constant).
+
+Validation: for an axially loaded cylinder with ν = 0, compliance scales exactly with 1/κ
+(κ = 0.5 → 2.00000, κ = 0.25 → 4.00000).
 
 ## References
 

@@ -81,7 +81,7 @@ namespace ClayBeso.Fem
 
         /// <summary>K = sum_e fm[e] * Km_e + fb[e] * Kb_e, then factorise.</summary>
         /// <summary>K = sum_e fm[e] * Km_e + fb[e] * Kb_e (values only; the pattern is fixed).</summary>
-        public void Assemble(double[] fm, double[] fb)
+        public void Assemble(double[] fm, double[] fb, double[] across = null)
         {
             var vals = _k.Values;
             Array.Clear(vals, 0, vals.Length);
@@ -92,8 +92,19 @@ namespace ClayBeso.Fem
                 var km = els[e].Km;
                 var kb = els[e].Kb;
                 double a = fm[e], b = fb[e];
-                for (int k = 0; k < 324; k++)
-                    if (s[k] >= 0) vals[s[k]] += a * km[k] + b * kb[k];
+                double dk = across == null ? 0 : across[e] - 1;
+                var km1 = els[e].Km1;
+                var kb1 = els[e].Kb1;
+                if (dk == 0 || km1 == null)
+                {
+                    for (int k = 0; k < 324; k++)
+                        if (s[k] >= 0) vals[s[k]] += a * km[k] + b * kb[k];
+                }
+                else
+                {
+                    for (int k = 0; k < 324; k++)
+                        if (s[k] >= 0) vals[s[k]] += a * (km[k] + dk * km1[k]) + b * (kb[k] + dk * kb1[k]);
+                }
             }
             _factorCurrent = false;
         }

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- axes: thickness t (right), layer height h (up) -->
+  <g stroke="#3B2A22" stroke-width="1.2" stroke-linecap="round" fill="none">
+    <path d="M 4 2.5 V 20 H 21.5"/>
+  </g>
+  <!-- h(t): flat at hMin, rising, flat at hMax -->
+  <path d="M 4.5 16.5 H 8 L 16 6.5 H 20.5" fill="none" stroke="#C8643C" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- hMin / hMax ticks -->
+  <g stroke="#2F6FB5" stroke-width="1" stroke-linecap="round">
+    <path d="M 2 16.5 H 4"/>
+    <path d="M 2 6.5 H 4"/>
+  </g>
+</svg>

@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ClayBeso.Fem;
+using ClayBeso.Geometry;
+using ClayBeso.Printing;
 
 namespace ClayBeso.Optimisation
 {
@@ -72,6 +74,18 @@ namespace ClayBeso.Optimisation
 
         /// <summary>Maximum fraction of the design volume re-admitted per iteration.</summary>
         public double MaxAdmissionRatio { get; set; } = 0.02;
+
+        // --- printed layers
+
+        /// <summary>
+        /// When set, the wall is weaker across its (horizontal) layers: across-layer stiffness is scaled
+        /// by kappa = eta * (t - h(t)) / t, with h(t) from this rule. Automatic values in the rule
+        /// (thickness range, bead area) are taken from tMin..tMax and the starting wall.
+        /// </summary>
+        public LayerRule LayerRule { get; set; }
+
+        /// <summary>Bond model (efficiency eta, minimum contact) used with <see cref="LayerRule"/>.</summary>
+        public BondModel Bond { get; set; } = new BondModel();
 
         /// <summary>Thickness mode: the target average wall thickness Vf * tMax [mm].</summary>
         public double TargetAverageThickness => VolumeFraction * MaxThickness;
@@ -158,6 +172,18 @@ namespace ClayBeso.Optimisation
                     Design[e] = 1.0;
             }
 
+            if (settings.LayerRule != null)
+            {
+                if (settings.Bond == null) throw new ArgumentException("A layer rule needs a bond model.");
+                model.EnableLayerAnisotropy(Vec3.UnitZ);
+                var start = _design.Select(e => settings.Mode == BesoMode.Thickness ? Design[e] : model.Thickness[e])
+                    .OrderBy(t => t).ToArray();
+                double median = start[start.Length / 2];
+                _rule = settings.Mode == BesoMode.Thickness
+                    ? settings.LayerRule.Resolve(settings.MinThickness, settings.MaxThickness, median)
+                    : settings.LayerRule.Resolve(start[0], start[start.Length - 1], median);
+            }
+
             _referenceVolume = _design.Sum(e => _model.Elements[e].Area * ReferenceThickness(e));
             _designArea = _design.Sum(e => _model.Elements[e].Area);
             if (settings.KeepVolume)
@@ -230,7 +256,10 @@ namespace ClayBeso.Optimisation
             return DesignHistory[i];
         }
 
-        private ElementScaling BuildScaling()
+        private ElementScaling BuildScaling() => ScalingFor(Design);
+
+        /// <summary>Stiffness, weight and across-layer factors for any design vector.</summary>
+        public ElementScaling ScalingFor(double[] design)
         {
             int m = _model.ElementCount;
             var s = new ElementScaling(m);
@@ -238,19 +267,38 @@ namespace ClayBeso.Optimisation
             {
                 if (Settings.Mode == BesoMode.Thickness)
                 {
-                    s.SetThickness(e, Design[e]);
+                    s.SetThickness(e, design[e]);
+                    if (_rule != null) s.Across[e] = Kappa(design[e]);
                 }
                 else
                 {
                     double t = _model.Thickness[e];
-                    double xp = Math.Pow(Design[e], Settings.Penalty);
+                    double xp = Math.Pow(design[e], Settings.Penalty);
                     s.Membrane[e] = xp * t;
                     s.Bending[e] = xp * t * t * t;
-                    s.Weight[e] = Design[e] * t;
+                    s.Weight[e] = design[e] * t;
                     s.Thickness[e] = t;
+                    if (_rule != null) s.Across[e] = Kappa(t);
                 }
             }
             return s;
+        }
+
+        // ---------------------------------------------------------------- printed layers
+
+        private readonly LayerRule _rule;   // resolved; null = isotropic wall
+
+        /// <summary>The resolved layer rule BESO uses for h(t), or null when layers are ignored.</summary>
+        public LayerRule Rule => _rule;
+
+        /// <summary>Across-layer stiffness factor kappa(t) = eta * c(t, h(t)), c = (t - h)/t.</summary>
+        public double Kappa(double t) => Settings.Bond.Efficiency * Settings.Bond.Contact(t, _rule.Height(t));
+
+        /// <summary>d kappa / dt by central difference (h(t) is piecewise linear or smooth).</summary>
+        private double KappaSlope(double t)
+        {
+            double d = 1e-6 * Math.Max(1.0, t);
+            return (Kappa(t + d) - Kappa(t - d)) / (2 * d);
         }
 
         /// <summary>Run one analysis + update. Returns false once finished.</summary>
@@ -299,8 +347,12 @@ namespace ClayBeso.Optimisation
                 if (Settings.Mode == BesoMode.Thickness)
                 {
                     double t = Design[e];
-                    // fm = t, fb = t^3, fw = t ; dV/dt = A
-                    a[e] = (em + 3 * t * t * eb - 2 * wu) / area;
+                    // fm = t, fb = t^3, fw = t ; dV/dt = A. With printed layers the stiffness is
+                    // t (Km + (k-1) Km1) + t^3 (Kb + (k-1) Kb1) with k = kappa(t), which adds
+                    // k'(t) (t u'Km1u + t^3 u'Kb1u). em, eb are already the effective works.
+                    double layered = _rule == null ? 0
+                        : KappaSlope(t) * (t * r.AcrossMembraneWork[e] + t * t * t * r.AcrossBendingWork[e]);
+                    a[e] = (em + 3 * t * t * eb + layered - 2 * wu) / area;
                 }
                 else
                 {

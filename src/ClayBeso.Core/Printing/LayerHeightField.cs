@@ -8,21 +8,26 @@ namespace ClayBeso.Printing
     public enum LayerMapping
     {
         /// <summary>
-        /// Constant bead cross-section (constant flow and feed): h is chosen so that the
-        /// bead of width t has area A (see <see cref="Bead.Area"/>), roughly h = A / t. Thick wall regions
-        /// get lower, more squashed layers, so the bead spreads wider. Thin regions get taller,
-        /// narrower layers. The toolpath keeps one feed and one flow and only the nozzle height changes.
+        /// For printers without flow control: constant bead cross-section (constant flow and feed).
+        /// h is chosen so that a bead of width t has area A (see <see cref="Bead.Area"/>), roughly
+        /// h = A / t, so thick walls come from squashing the bead with a lower layer.
         /// </summary>
         ConstantBeadArea = 0,
 
-        /// <summary>Linear remap: thickest wall -> hMin, thinnest wall -> hMax.</summary>
+        /// <summary>Linear remap: thickest wall -> hMin, thinnest wall -> hMax (fixed-flow style).</summary>
         LinearInverse = 1,
 
         /// <summary>
-        /// h = k * t: every bead keeps the same height/width ratio (the same squash), which keeps
-        /// stacking stability uniform. Needs flow control, because the bead area varies with t^2.
+        /// h = k * t: every bead keeps the same height/width ratio, which keeps stacking stability
+        /// uniform. Thickness and layer height rise together. Needs flow control (bead area ~ t^2).
         /// </summary>
         ConstantAspectRatio = 2,
+
+        /// <summary>
+        /// Thinnest wall -> hMin, thickest wall -> hMax: more demand means a wider bead and a taller
+        /// layer, with the flow raised to supply both (see the flow factor). Needs flow control.
+        /// </summary>
+        Proportional = 3,
     }
 
     /// <summary>Turns a wall-thickness field into a per-vertex target layer height.</summary>
@@ -35,6 +40,8 @@ namespace ClayBeso.Printing
         /// <param name="beadArea">Bead cross-section [mm^2] for <see cref="LayerMapping.ConstantBeadArea"/>; &lt;= 0 picks one automatically.</param>
         /// <param name="smoothing">Laplacian smoothing passes on the result.</param>
         /// <param name="aspectRatio">Height/width ratio k for <see cref="LayerMapping.ConstantAspectRatio"/>.</param>
+        /// <param name="thicknessRange">Thickness interval mapped onto [hMin, hMax] by the linear mappings
+        /// (e.g. the optimiser's tMin..tMax). null = the min..max of the field itself.</param>
         public static double[] Compute(
             TriMesh mesh,
             IList<double> faceThickness,
@@ -44,42 +51,22 @@ namespace ClayBeso.Printing
             double beadArea,
             int smoothing,
             out double usedBeadArea,
-            double aspectRatio = 0.4)
+            double aspectRatio = 0.4,
+            (double lo, double hi)? thicknessRange = null)
         {
-            if (hMin <= 0 || hMax < hMin) throw new ArgumentException("Need 0 < hMin <= hMax.");
-            var tv = mesh.FaceToVertex(faceThickness);
-            var solid = tv.Where(t => t > 0).ToArray();
-            if (solid.Length == 0) throw new ArgumentException("Thickness field is empty.");
-            double tMin = solid.Min(), tMax = solid.Max();
+            var rule = new LayerRule(mapping, hMin, hMax, beadArea, aspectRatio, thicknessRange);
+            return Compute(mesh, faceThickness, rule, smoothing, out usedBeadArea);
+        }
 
-            usedBeadArea = beadArea;
+        /// <summary>Layer height per vertex from a shared <see cref="LayerRule"/>; automatic values come from the field.</summary>
+        public static double[] Compute(TriMesh mesh, IList<double> faceThickness, LayerRule rule, int smoothing, out double usedBeadArea)
+        {
+            var tv = mesh.FaceToVertex(faceThickness);
+            var resolved = rule.Resolve(tv);
+            usedBeadArea = resolved.BeadArea;
+
             var h = new double[mesh.VertexCount];
-            if (mapping == LayerMapping.ConstantBeadArea)
-            {
-                if (beadArea <= 0)
-                {
-                    // Centre the range: the median wall gets the mid layer height.
-                    var sorted = solid.OrderBy(t => t).ToArray();
-                    usedBeadArea = Bead.Area(sorted[sorted.Length / 2], 0.5 * (hMin + hMax));
-                }
-                for (int v = 0; v < h.Length; v++)
-                    h[v] = tv[v] > 0 ? Clamp(HeightForArea(usedBeadArea, tv[v]), hMin, hMax) : hMax;
-            }
-            else if (mapping == LayerMapping.ConstantAspectRatio)
-            {
-                if (aspectRatio <= 0) throw new ArgumentException("Aspect ratio must be positive.");
-                for (int v = 0; v < h.Length; v++)
-                    h[v] = tv[v] > 0 ? Clamp(aspectRatio * tv[v], hMin, hMax) : hMax;
-            }
-            else
-            {
-                double span = tMax - tMin;
-                for (int v = 0; v < h.Length; v++)
-                {
-                    double s = span > 1e-12 ? (tv[v] - tMin) / span : 0.5;
-                    h[v] = tv[v] > 0 ? hMax - Clamp(s, 0, 1) * (hMax - hMin) : hMax;
-                }
-            }
+            for (int v = 0; v < h.Length; v++) h[v] = resolved.Height(tv[v]);
 
             if (smoothing > 0)
             {
@@ -99,15 +86,5 @@ namespace ClayBeso.Printing
             return h;
         }
 
-        /// <summary>Height at which a bead of width w has cross-section A (inverse of Bead.Area in h).</summary>
-        private static double HeightForArea(double area, double width)
-        {
-            // (w - h) h + pi h^2/4 = A  ->  c h^2 - w h + A = 0, c = 1 - pi/4; take the smaller root.
-            double c = 1 - Math.PI / 4.0;
-            double disc = width * width - 4 * c * area;
-            return disc < 0 ? width : (width - Math.Sqrt(disc)) / (2 * c);
-        }
-
-        private static double Clamp(double x, double a, double b) => x < a ? a : (x > b ? b : x);
     }
 }

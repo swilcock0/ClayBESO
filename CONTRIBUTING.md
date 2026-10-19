@@ -81,3 +81,7 @@ Ranked roughly by value for clay printing (details in `AGENTS.md` → *Known lim
 3. **G-code export** from the layer polylines (Z per point, extrusion from width × height).
 4. Overhang/printability check for the layer field.
 5. A more accurate membrane element (lets you use coarser meshes).
+6. **Your own toolpath design** for walls thicker than one bead, for example back-and-forth or
+   woven paths in the style of WeaveSlicer (Friedman-Gerlicz et al., CHI 2024). Use the BESO
+   thickness and the Non-planar Layers curves as inputs. This is open design territory: build it
+   as your own Grasshopper definition first, and only move it into the plugin once it works.

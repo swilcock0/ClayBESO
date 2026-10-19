@@ -46,6 +46,36 @@ public class FlowTests
     }
 
     [Fact]
+    public void ProportionalMappingRaisesLayerHeightWithThickness()
+    {
+        var mesh = Strip(out var t); // 3.5 mm at the bottom to 7 mm at the top
+        var tv = mesh.FaceToVertex(t);
+        var h = LayerHeightField.Compute(mesh, t, 1.0, 2.5, LayerMapping.Proportional, 0, 0, out _);
+
+        int thin = Array.IndexOf(tv, tv.Min()), thick = Array.IndexOf(tv, tv.Max());
+        Assert.Equal(1.0, h[thin], 9);
+        Assert.Equal(2.5, h[thick], 9);
+        for (int v = 0; v < h.Length; v++)
+            Assert.Equal(1.0 + 1.5 * (tv[v] - tv.Min()) / (tv.Max() - tv.Min()), h[v], 9);
+    }
+
+    [Fact]
+    public void ThicknessRangeAnchorsTheLinearMappings()
+    {
+        var mesh = Strip(out _);
+        var nearlyUniform = Enumerable.Range(0, mesh.FaceCount).Select(f => 5.0 + 0.01 * (f % 2)).ToArray();
+
+        // Without a range a 0.01 mm variation would use the whole height range...
+        var free = LayerHeightField.Compute(mesh, nearlyUniform, 1.0, 2.5, LayerMapping.Proportional, 0, 0, out _);
+        Assert.True(free.Max() - free.Min() > 1.0);
+
+        // ...anchored to 3.5-7 mm it stays near the middle.
+        var anchored = LayerHeightField.Compute(mesh, nearlyUniform, 1.0, 2.5, LayerMapping.Proportional, 0, 0, out _,
+            thicknessRange: (3.5, 7.0));
+        Assert.All(anchored, x => Assert.InRange(x, 1.0 + 1.5 * 1.5 / 3.5 - 1e-9, 1.0 + 1.5 * 1.51 / 3.5 + 1e-9));
+    }
+
+    [Fact]
     public void SlicedBeadAreaUsesWidthAndRealisedHeight()
     {
         var mesh = Strip(out var t);

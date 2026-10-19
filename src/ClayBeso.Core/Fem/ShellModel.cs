@@ -116,6 +116,26 @@ namespace ClayBeso.Fem
                 throw new ArgumentException("The model has no supports.");
         }
 
+        /// <summary>True once <see cref="EnableLayerAnisotropy"/> has run: elements carry across-layer stiffness parts.</summary>
+        public bool IsLayered { get; private set; }
+
+        private readonly object _layerLock = new object();
+
+        /// <summary>
+        /// Give every element horizontal layer axes, so that an across-layer factor kappa
+        /// (<see cref="ElementScaling.Across"/>) can weaken the wall across its layers. With all kappa = 1
+        /// the results are unchanged. Safe to call more than once.
+        /// </summary>
+        public void EnableLayerAnisotropy(Vec3 up)
+        {
+            lock (_layerLock)
+            {
+                if (IsLayered) return;
+                foreach (var el in Elements) el.EnableLayerAxes(up);
+                IsLayered = true;
+            }
+        }
+
         public double TotalVolume(IList<double> thickness)
         {
             double v = 0;

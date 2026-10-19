@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- three stacked beads in cross-section (stadium shapes) -->
+  <g fill="#C8643C" stroke="#3B2A22" stroke-width="0.8">
+    <rect x="2" y="2.6" width="13" height="5.6" rx="2.8"/>
+    <rect x="2" y="8.2" width="13" height="5.6" rx="2.8"/>
+    <rect x="2" y="13.8" width="13" height="5.6" rx="2.8"/>
+  </g>
+  <!-- bonded contact strips: only w - h wide -->
+  <g stroke="#D0402B" stroke-width="1.6" stroke-linecap="round">
+    <path d="M 5.2 8.2 H 11.8"/>
+    <path d="M 5.2 13.8 H 11.8"/>
+  </g>
+  <!-- pulled apart across the layers -->
+  <g stroke="#2F6FB5" stroke-width="1.3" stroke-linecap="round" fill="none">
+    <path d="M 19.5 9.5 V 2.8"/>
+    <path d="M 19.5 12.5 V 19.6"/>
+  </g>
+  <g fill="#2F6FB5">
+    <path d="M 17.4 4.6 L 19.5 1.6 L 21.6 4.6 Z"/>
+    <path d="M 17.4 17.8 L 19.5 20.8 L 21.6 17.8 Z"/>
+  </g>
+</svg>

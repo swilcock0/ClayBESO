@@ -60,7 +60,7 @@ public class BesoTests
             return s;
         }
 
-        var solver = opt.Solver;
+        var solver = new ShellSolver(model) { ReuseFactorisation = false }; // exact solves for finite differences
         var r0 = solver.Solve(Scale(opt.Design));
         var alpha = opt.RawSensitivity(r0);
 

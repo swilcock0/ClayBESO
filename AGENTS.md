@@ -41,6 +41,10 @@ A Grasshopper plugin (Rhino 8) that:
   `flow = bead area × feed`. The Non-planar Layers component outputs per point the bead area
   (stadium model, `Printing/Bead.cs`) and a flow factor relative to a nominal area. Both use
   the *realised* layer height.
+- **Design intent (from the user): both bead width and layer height assign material, and flux
+  is raised to allow taller layers.** The default layer mapping is therefore *proportional*
+  (thicker wall → taller layer). Don't frame thick walls as coming from squashing: the
+  squash-based mappings 0 and 1 exist only for fixed-flow printers.
 - Component defaults target a 3 mm nozzle (tMin 3.5, tMax 7, hMin 1.0, hMax 2.5 mm).
 - G-code export is not implemented. Before writing it, ask the user for a sample G-code file
   from their current WASP workflow to match the header, E-axis convention (absolute/relative,
@@ -60,6 +64,8 @@ src/ClayBeso.GH/          Grasshopper plugin (.gha). Thin wrappers only, no math
   Components/             one file per Grasshopper component
 tests/ClayBeso.Tests/     xUnit tests of the core (benchmarks, sensitivities, layers, pipeline)
 docs/THEORY.md            the maths, with references
+docs/VALIDATION.md        the experimental validation plan (tests, pass criteria, which plugin input each sets)
+docs/COMPONENTS.md        every component input/output, GENERATED from the sources (never edit by hand)
 ```
 
 ## Commands
@@ -156,9 +162,20 @@ into the Grasshopper Libraries folder. Rhino must be restarted to load a new bui
    `SetLegend(title, unit, used, show)` so the legend matches the mesh.
 7. Pass models between components as plain objects (generic parameter). Read them with
    `RhinoConvert.Unwrap<T>()`.
-8. Build, run tests, list the component in `README.md`.
+8. Regenerate the component reference: `UPDATE_DOCS=1 dotnet test tests/ClayBeso.Tests --filter ComponentDocs`
+   (PowerShell: `$env:UPDATE_DOCS=1; dotnet test ...`). It is built from the input/output descriptions in
+   code, and the test suite fails while `docs/COMPONENTS.md` is out of date, so write good descriptions.
+9. Build, run tests, list the component in `README.md`.
 
 ## Known limitations / roadmap (good next tasks)
+
+- **Layer height in the structure (done, both steps).** `BondModel` (contact c = (w − h)/w,
+  efficiency η) drives (1) `Fem/InterlayerCheck.cs`, a post-analysis check, and (2) the orthotropic
+  wall: `ShellElement.EnableLayerAxes` adds across-layer parts Km1/Kb1, `ElementScaling.Across` = κ,
+  and `BesoSettings.LayerRule` + `Bond` make BESO use κ = η·c(t, h(t)). The shared `Printing/LayerRule`
+  is the single source of h(t). Keep κ = 1 bit-for-bit isotropic (`LayeredModelWithKappaOneMatchesIsotropic`)
+  and the layered sensitivities checked by finite differences (`LayeredSensitivityMatchesFiniteDifference`).
+  Open: real (non-planar) layer directions inside BESO (currently horizontal), and calibrating η (docs/VALIDATION.md §4).
 
 - Linear elastic, small displacements, one load case, analysis of the finished geometry only.
   No layer-by-layer (staged) analysis of the print process, no buckling check. Wet-clay walls
@@ -170,3 +187,7 @@ into the Grasshopper Libraries folder. Rhino must be restarted to load a new bui
 - Printing output stops at polylines + per-point heights/widths: no G-code, travel moves,
   extrusion calculation or overhang check yet. A closed bottom (floor) must be printed
   separately with planar layers.
+- **Toolpath design (e.g. woven / oscillating paths for walls wider than one bead) is
+  deliberately left to the student.** The user decided the plugin should provide the thickness
+  field and layer curves, not generate such paths. Don't add a weaving/toolpath generator unless
+  the user or student asks for one. Help them build it in Grasshopper instead.

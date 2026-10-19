@@ -146,7 +146,93 @@ namespace ClayBeso.Fem
         /// unit width (M = [Mx, My, Mxy]) at unit thickness, both in the local frame.
         /// Multiply by fm and fb respectively to get the actual resultants.
         /// </summary>
-        public void UnitResultants(double[] uGlobal, out double[] n, out double[] m)
+        public void UnitResultants(double[] uGlobal, out double[] n, out double[] m) =>
+            UnitResultants(uGlobal, out n, out m, 1.0);
+
+        // ---------------------------------------------------------------- printed layers
+        //
+        // A printed wall is weaker across its layers than along them. With layer axes a (along the
+        // bead) and s (across the layers), the plane-stress matrix is split linearly in kappa:
+        //   Q(kappa) = Q0 + kappa * Q1,   Q1 = [[0, nu E', 0], [nu E', E', 0], [0, 0, G]]  (a, s axes)
+        // with E' = E / (1 - nu^2). kappa = 1 gives back the isotropic matrix exactly; kappa < 1 scales
+        // the across-layer modulus, the Poisson coupling and the shear. Element stiffness becomes
+        //   K = fm (Km + (kappa - 1) Km1) + fb (Kb + (kappa - 1) Kb1).
+
+        /// <summary>Global 18x18 across-layer membrane part at unit thickness, or null if not layered.</summary>
+        public double[] Km1 { get; private set; }
+
+        /// <summary>Global 18x18 across-layer bending part at unit thickness, or null if not layered.</summary>
+        public double[] Kb1 { get; private set; }
+
+        /// <summary>Unit along-layer direction (null if not layered).</summary>
+        public Vec3? LayerDirection { get; private set; }
+
+        private double[,] _q1;   // Q1 rotated into the local (E1, E2) frame, unit thickness
+
+        /// <summary>
+        /// Layer axes for an element with horizontal layers: along-layer a = horizontal tangent of
+        /// the face (perpendicular to <paramref name="up"/> and the normal). Faces lying flat to
+        /// within ~3 degrees have no layer direction and stay isotropic.
+        /// </summary>
+        public void EnableLayerAxes(Vec3 up)
+        {
+            var a = Vec3.Cross(Normal, up.Unit());
+            if (a.Length < 0.05) { Km1 = Kb1 = null; _q1 = null; LayerDirection = null; return; }
+            a = a.Unit();
+            LayerDirection = a;
+
+            double c = Vec3.Dot(a, E1), s = Vec3.Dot(a, E2);
+            double ep = _e / (1 - _nu * _nu), g = _e / (2 * (1 + _nu));
+            _q1 = Rotate(0, ep, _nu * ep, g, c, s);
+
+            var kmLocal = new double[Dofs * Dofs];
+            var kcst = CstStiffness(X, Y, Area, _q1);
+            for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 6; j++)
+                kmLocal[MemDof(i) * Dofs + MemDof(j)] += kcst[i, j];
+
+            var kbLocal = new double[Dofs * Dofs];
+            var kdkt = DktStiffness(X, Y, Area, Scale(_q1, 1.0 / 12.0));
+            for (int i = 0; i < 9; i++)
+            for (int j = 0; j < 9; j++)
+                kbLocal[BendDof(i) * Dofs + BendDof(j)] += kdkt[i, j];
+
+            Km1 = ToGlobal(kmLocal);
+            Kb1 = ToGlobal(kbLocal);
+        }
+
+        /// <summary>
+        /// Orthotropic plane-stress matrix (Q11, Q22, Q12, Q66 in material axes, no Q16/Q26)
+        /// rotated into axes whose first direction makes cos = c, sin = s with material axis 1.
+        /// </summary>
+        public static double[,] Rotate(double q11, double q22, double q12, double q66, double c, double s)
+        {
+            double c2 = c * c, s2 = s * s, c4 = c2 * c2, s4 = s2 * s2, cs = c * s;
+            double b11 = q11 * c4 + 2 * (q12 + 2 * q66) * s2 * c2 + q22 * s4;
+            double b22 = q11 * s4 + 2 * (q12 + 2 * q66) * s2 * c2 + q22 * c4;
+            double b12 = (q11 + q22 - 4 * q66) * s2 * c2 + q12 * (s4 + c4);
+            double b66 = (q11 + q22 - 2 * q12 - 2 * q66) * s2 * c2 + q66 * (s4 + c4);
+            double b16 = (q11 - q12 - 2 * q66) * cs * c2 + (q12 - q22 + 2 * q66) * cs * s2;
+            double b26 = (q11 - q12 - 2 * q66) * cs * s2 + (q12 - q22 + 2 * q66) * cs * c2;
+            return new double[3, 3]
+            {
+                { b11, b12, b16 },
+                { b12, b22, b26 },
+                { b16, b26, b66 },
+            };
+        }
+
+        private static double[,] Scale(double[,] d, double f)
+        {
+            var r = new double[3, 3];
+            for (int i = 0; i < 3; i++)
+            for (int j = 0; j < 3; j++)
+                r[i, j] = d[i, j] * f;
+            return r;
+        }
+
+        /// <summary>Resultants as above, with the across-layer stiffness scaled by kappa.</summary>
+        public void UnitResultants(double[] uGlobal, out double[] n, out double[] m, double kappa)
         {
             var ul = ToLocal(uGlobal);
 
@@ -169,6 +255,15 @@ namespace ClayBeso.Fem
 
             var dm = Constitutive(_e, _nu, 1.0);
             var db = Constitutive(_e, _nu, 1.0 / 12.0);
+            if (_q1 != null && kappa != 1.0)
+            {
+                for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 3; j++)
+                {
+                    dm[i, j] += (kappa - 1) * _q1[i, j];
+                    db[i, j] += (kappa - 1) * _q1[i, j] / 12.0;
+                }
+            }
             n = Mul(dm, eps);
             m = Mul(db, kap);
         }
@@ -209,12 +304,12 @@ namespace ClayBeso.Fem
             };
         }
 
-        public static double[,] CstStiffness(double[] x, double[] y, double area, double e, double nu)
-        {
-            var b = CstB(x, y, area);
-            var d = Constitutive(e, nu, 1.0);
-            return BtDB(b, d, 6, area);
-        }
+        public static double[,] CstStiffness(double[] x, double[] y, double area, double e, double nu) =>
+            CstStiffness(x, y, area, Constitutive(e, nu, 1.0));
+
+        /// <summary>CST stiffness for any plane-stress matrix d (per unit thickness, local axes).</summary>
+        public static double[,] CstStiffness(double[] x, double[] y, double area, double[,] d) =>
+            BtDB(CstB(x, y, area), d, 6, area);
 
         // ---------------------------------------------------------------- DKT bending
 
@@ -305,9 +400,12 @@ namespace ClayBeso.Fem
         };
 
         /// <summary>DKT stiffness at unit thickness (bending rigidity E/(12(1-nu^2))).</summary>
-        public static double[,] DktStiffness(double[] x, double[] y, double area, double e, double nu)
+        public static double[,] DktStiffness(double[] x, double[] y, double area, double e, double nu) =>
+            DktStiffness(x, y, area, Constitutive(e, nu, 1.0 / 12.0));
+
+        /// <summary>DKT stiffness for any bending matrix d (rigidity at unit thickness, local axes).</summary>
+        public static double[,] DktStiffness(double[] x, double[] y, double area, double[,] d)
         {
-            var d = Constitutive(e, nu, 1.0 / 12.0);
             var k = new double[9, 9];
             for (int g = 0; g < 3; g++)
             {
