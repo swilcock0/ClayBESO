@@ -12,12 +12,15 @@ namespace ClayBeso.GH.Components
     {
         public const string ReferenceUrl = "https://github.com/swilcock0/ClayBESO/blob/main/docs/COMPONENTS.md";
 
-        private bool _wasPressed;
+        private bool _last;
+        private bool _seen;
 
         public HelpComponent()
             : base("Help", "Help",
-                "Opens the ClayBESO component reference (every input and output of every component) in your browser. " +
-                "Double-click this component, or connect a Button to Open.",
+                "Opens the ClayBESO component reference (every input and output of every component) in your browser, " +
+                "and shows the installed ClayBESO version.\n" +
+                "Double-click this component, or connect a Boolean Toggle (every click opens the page) or a Button " +
+                "(each press opens it) to Open.",
                 Tab.Name, Tab.Help) { }
 
         public override Guid ComponentGuid => new Guid("a1594953-48d2-4706-9c3c-c8b2dc97e3a4");
@@ -28,23 +31,35 @@ namespace ClayBeso.GH.Components
 
         protected override void RegisterInputParams(GH_InputParamManager p)
         {
-            p.AddBooleanParameter("Open", "Open", "Opens the component reference when this turns true (connect a Button).", GH_ParamAccess.item, false);
+            p.AddBooleanParameter("Open", "Open", "Opens the component reference: on every click of a Boolean Toggle, or on each press of a Button.", GH_ParamAccess.item, false);
             p[0].Optional = true;
         }
 
         protected override void RegisterOutputParams(GH_OutputParamManager p)
         {
             p.AddTextParameter("URL", "URL", "Address of the component reference.", GH_ParamAccess.item);
+            p.AddTextParameter("Version", "V", "Installed ClayBESO release version (e.g. 0.3.0).", GH_ParamAccess.item);
         }
 
         protected override void SolveInstance(IGH_DataAccess da)
         {
             bool open = false;
             da.GetData(0, ref open);
-            // Open on the press only, so a toggle left on doesn't open a tab on every recompute.
-            if (open && !_wasPressed) OpenReference(this);
-            _wasPressed = open;
+
+            // A toggle opens the page whenever it is clicked (either way); a button only when pressed,
+            // not again on release. Nothing opens on the first solve, e.g. when the file is opened with
+            // a toggle saved as true.
+            bool fromToggle = false;
+            foreach (var src in Params.Input[0].Sources)
+                if (src is Grasshopper.Kernel.Special.GH_BooleanToggle) fromToggle = true;
+            bool clicked = _seen && (fromToggle ? open != _last : open && !_last);
+            if (clicked) OpenReference(this);
+            _last = open;
+            _seen = true;
+
+            Message = "v" + ClayBesoInfo.ReleaseVersion;
             da.SetData(0, ReferenceUrl);
+            da.SetData(1, ClayBesoInfo.ReleaseVersion);
         }
 
         internal static void OpenReference(GH_Component owner)

@@ -324,16 +324,19 @@ Thicken the mid-surface by the per-face thickness to preview the printed wall as
 
 Nickname `Help` · source `src/ClayBeso.GH/Components/HelpComponent.cs`
 
-Opens the ClayBESO component reference (every input and output of every component) in your browser. Double-click this component, or connect a Button to Open.
+Opens the ClayBESO component reference (every input and output of every component) in your browser, and shows the installed ClayBESO version.
+
+Double-click this component, or connect a Boolean Toggle (every click opens the page) or a Button (each press opens it) to Open.
 
 **Inputs**
 
 | # | Name | Nick | Type | Access | Default | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| 0 | Open | `Open` | Boolean | item | `false` | Opens the component reference when this turns true (connect a Button). |
+| 0 | Open | `Open` | Boolean | item | `false` | Opens the component reference: on every click of a Boolean Toggle, or on each press of a Button. |
 
 **Outputs**
 
 | # | Name | Nick | Type | Access | Description |
 | --- | --- | --- | --- | --- | --- |
 | 0 | URL | `URL` | Text | item | Address of the component reference. |
+| 1 | Version | `V` | Text | item | Installed ClayBESO release version (e.g. 0.3.0). |

@@ -14,7 +14,23 @@ namespace ClayBeso.GH
         public override string AuthorName => "Politecnico di Milano";
         public override string AuthorContact => "";
         public override Bitmap Icon => Common.Icons.Get("ClayBeso");
-        public override string Version => "0.3.0";
+        public override string Version => ReleaseVersion;
+
+        /// <summary>
+        /// The plugin's release version, read from the built assembly. Its only source is
+        /// &lt;Version&gt; in ClayBeso.GH.csproj (the SDK appends "+commit", which is cut off here).
+        /// </summary>
+        public static string ReleaseVersion { get; } = ReadVersion();
+
+        private static string ReadVersion()
+        {
+            var asm = typeof(ClayBesoInfo).Assembly;
+            var info = (System.Reflection.AssemblyInformationalVersionAttribute)Attribute.GetCustomAttribute(
+                asm, typeof(System.Reflection.AssemblyInformationalVersionAttribute));
+            string v = info?.InformationalVersion ?? asm.GetName().Version?.ToString(3) ?? "unknown";
+            int plus = v.IndexOf('+');
+            return plus >= 0 ? v.Substring(0, plus) : v;
+        }
     }
 
     /// <summary>Registers the tab icon and short name shown when Grasshopper's tabs are collapsed.</summary>

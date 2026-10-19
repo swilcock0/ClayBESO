@@ -86,8 +86,8 @@ into the Grasshopper Libraries folder. Rhino must be restarted to load a new bui
 
 ## Releasing (only when the user asks)
 
-1. Bump `<Version>` in `src/ClayBeso.GH/ClayBeso.GH.csproj` and `Version` in
-   `src/ClayBeso.GH/ClayBesoInfo.cs` (semantic versioning: 0.x.y).
+1. Bump `<Version>` in `src/ClayBeso.GH/ClayBeso.GH.csproj` (semantic versioning: 0.x.y). It is the only
+   place: the plugin info and the Help component read it from the built assembly.
 2. Build and test, then run `scripts/package.ps1`. It writes `artifacts/claybeso-<version>-rh8_0-win.yak`.
 3. Commit, tag `v<version>`, push the commit and the tag, then
    `gh release create v<version> artifacts/claybeso-<version>-rh8_0-win.yak --title ... --notes ...`.
