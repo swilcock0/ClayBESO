@@ -42,6 +42,11 @@ No other plugins or licences are needed.
 
 ## Basic workflow
 
+A working example is in **`examples/TestVase.ghx`**. It builds a parametric vase from
+ellipses with sliders, then runs the full chain: Shell Model → Analysis → BESO → Layer
+Heights → Non-planar Layers. It needs no Rhino geometry: open it in Grasshopper and set BESO's
+*Run* toggle to true.
+
 ```
 Surface/Brep ──Mesh (QuadRemesh or Mesh Surface)──► Shell Model ◄── Clay Material
                                                       │
