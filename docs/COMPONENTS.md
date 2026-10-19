@@ -14,7 +14,7 @@ Inputs in **bold** must be connected. The others have a default (shown) or are o
 are only ever added at the end, so saved definitions keep working.
 
 - **1 Model**: [Clay Material](#clay-material), [Shell Model](#shell-model)
-- **2 Analyse**: [Shell Analysis](#shell-analysis), [Interlayer Check](#interlayer-check)
+- **2 Analyse**: [Shell Analysis](#shell-analysis), [Interlayer Check](#interlayer-check), [Print Stages](#print-stages)
 - **3 Optimise**: [Shell BESO](#shell-beso)
 - **4 Print**: [Layer Heights](#layer-heights), [Layer Rule](#layer-rule), [Non-planar Layers](#non-planar-layers), [Wall Preview](#wall-preview)
 - **5 Help**: [Help](#help)
@@ -106,6 +106,7 @@ Linear static analysis of a shell model, optionally with a per-face thickness (e
 | 5 | Preview | `P` | Mesh | item | Deformed mesh coloured by von Mises stress. |
 | 6 | Info | `I` | Text | item | Summary. |
 | 7 | Max Stress Point | `σMax` | Point | item | Centre of the face with the highest von Mises stress. |
+| 8 | Force Flow | `FF` | Vector | list | Per face: direction of the dominant principal in-plane force (the force-flow line direction); length 0-1 = how directional it is (0 = equal in all directions). Feed it to Non-planar Layers (Method 2). |
 
 ### Interlayer Check
 
@@ -145,6 +146,47 @@ Utilisation = worst of bond failure (tension + shear vs η·f) and bearing of th
 | 8 | Preview | `P` | Mesh | item | Mesh coloured by utilisation (grey = not checked). |
 | 9 | Worst Point | `Umax` | Point | item | Centre of the face with the highest utilisation. |
 | 10 | Info | `I` | Text | item | Summary. |
+| 11 | Interface Angle | `θf` | Number | list | Per face: angle [deg] between the force flow and the stacking direction. 0 = force crosses the layers squarely (interfaces in compression/tension); 90 = force runs along the layers (interfaces in shear, layers can slide). |
+| 12 | Force Flow | `FF` | Vector | list | Per face: dominant principal in-plane force direction; length 0-1 = how directional it is. |
+
+### Print Stages
+
+Nickname `Stages` · source `src/ClayBeso.GH/Components/PrintStagesComponent.cs`
+
+Analyse the shell while it is being printed: at each stage only the layers printed so far (from the Layer Field of Non-planar Layers) exist, loaded by their own weight. Overhangs and soft clay usually fail part-way up, which an analysis of the finished piece can't show.
+
+With a clay strength, each stage also gets the interlayer check, and the worst stage is the one with the highest interlayer utilisation; without one, the highest von Mises stress. Clay stiffness is taken as the same at every height (no ageing yet).
+
+**Inputs**
+
+| # | Name | Nick | Type | Access | Default | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | **Model** | `Model` | Generic | item | required | Shell model. |
+| 1 | Thickness | `t` | Number | list | optional | Wall thickness per face [mm] (e.g. from Shell BESO). Default: the model's thickness. |
+| 2 | **Layer Field** | `φ` | Number | list | required | Layer field per vertex, from the Layer Field output of Non-planar Layers. |
+| 3 | Stages | `N` | Integer | item | `10` | Number of stages, evenly spaced in layers up to the last one. |
+| 4 | Show Stage | `Show` | Integer | item | `-1` | Stage shown in the preview: 0 = first ... N-1 = finished piece; -1 = the worst stage. |
+| 5 | Vertical | `Vz` | Boolean | item | `true` | Same setting as on Non-planar Layers (layer height measured in Z). |
+| 6 | Strength | `f` | Number | item | `0.0` | Clay strength [MPa] for the interlayer check at each stage. 0 = use the Clay Material strength; if that is 0 too, the check is skipped. |
+| 7 | Bond Efficiency | `η` | Number | item | `1.0` | Interface efficiency 0-1 (see Interlayer Check). |
+| 8 | Orthotropic | `Orth` | Boolean | item | `true` | Treat the wall as weaker across its layers (stiffness × η·c from the realised layer heights). |
+| 9 | Point Loads | `PL` | Boolean | item | `false` | Also apply the model's point loads at every stage (normally they act only on the finished piece). |
+| 10 | Deform Scale | `DS` | Number | item | `10.0` | Displacement exaggeration for the preview. |
+| 11 | Colour Range | `CR` | Interval | item | optional | Fix the preview colour scale. Empty = 0 to the maximum over all stages (the same scale for every stage). |
+| 12 | Legend | `Lg` | Boolean | item | `true` | Draw a colour legend in the viewport. |
+
+**Outputs**
+
+| # | Name | Nick | Type | Access | Description |
+| --- | --- | --- | --- | --- | --- |
+| 0 | Stage Layer | `L` | Integer | list | Per stage: printed up to this layer. |
+| 1 | Stage Height | `z` | Number | list | Per stage: height of the highest printed point (document units). |
+| 2 | Max Displacement | `dMax` | Number | list | Per stage: largest displacement [mm]. |
+| 3 | Max Von Mises | `σMax` | Number | list | Per stage: largest von Mises stress [MPa]. |
+| 4 | Max Utilisation | `Umax` | Number | list | Per stage: largest interlayer utilisation (empty without a strength). |
+| 5 | Worst Stage | `Worst` | Integer | item | Index of the most critical stage. |
+| 6 | Preview | `P` | Mesh | item | The shown stage, deformed and coloured by interlayer utilisation (or von Mises without a strength). |
+| 7 | Info | `I` | Text | item | Summary. |
 
 ## 3 Optimise
 
@@ -216,8 +258,8 @@ Mappings 0 and 1 are for fixed flow: 0 = constant bead area (thick walls by squa
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | **Model** | `Model` | Generic | item | required | Shell model (for the mesh). |
 | 1 | **Thickness** | `t` | Number | list | required | Wall thickness per face [mm]. |
-| 2 | Min Layer Height | `hMin` | Number | item | `1.0` | Smallest layer height [mm]. About 0.4× nozzle diameter (0.6 mm for 1.5 mm, 1.2 mm for 3 mm). |
-| 3 | Max Layer Height | `hMax` | Number | item | `2.5` | Largest stable layer height [mm]. About 0.8× nozzle diameter (1.2 mm for 1.5 mm, 2.4 mm for 3 mm). |
+| 2 | Min Layer Height | `hMin` | Number | item | `1.0` | Smallest layer height [mm]. At least 0.25× nozzle diameter (Vele et al. 2023: 25-75 %), i.e. 0.4 mm for a 1.5 mm nozzle, 0.75 mm for 3 mm. |
+| 3 | Max Layer Height | `hMax` | Number | item | `2.25` | Largest layer height [mm]. At most 0.75× nozzle diameter (Vele et al. 2023: 25-75 %), i.e. 1.1 mm for a 1.5 mm nozzle, 2.25 mm for 3 mm. |
 | 4 | Mapping | `Map` | Integer | item | `3` | 3 = proportional (default: thicker wall, taller layer), 2 = constant aspect ratio (h = k·t), 0 = constant bead area (fixed flow), 1 = linear inverse (fixed flow). |
 | 5 | Bead Area | `A` | Number | item | `0.0` | Bead cross-section [mm²] for mapping 0. 0 = automatic. |
 | 6 | Smoothing | `Sm` | Integer | item | `5` | Smoothing passes on the height field. |
@@ -247,8 +289,8 @@ How wall thickness turns into layer height, as one object shared by Layer Height
 | # | Name | Nick | Type | Access | Default | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Mapping | `Map` | Integer | item | `3` | 3 = proportional (thicker wall, taller layer), 2 = constant aspect ratio (h = k·t), 0 = constant bead area (fixed flow), 1 = linear inverse (fixed flow). |
-| 1 | Min Layer Height | `hMin` | Number | item | `1.0` | Smallest layer height [mm]. |
-| 2 | Max Layer Height | `hMax` | Number | item | `2.5` | Largest layer height [mm]. |
+| 1 | Min Layer Height | `hMin` | Number | item | `1.0` | Smallest layer height [mm]. At least 0.25× nozzle diameter (0.75 mm for a 3 mm nozzle). |
+| 2 | Max Layer Height | `hMax` | Number | item | `2.25` | Largest layer height [mm]. At most 0.75× nozzle diameter (2.25 mm for a 3 mm nozzle). |
 | 3 | Bead Area | `A` | Number | item | `0.0` | Bead cross-section [mm²] for mapping 0. 0 = automatic. |
 | 4 | Aspect Ratio | `k` | Number | item | `0.4` | Layer height / bead width for mapping 2. |
 | 5 | Thickness Range | `tR` | Interval | item | optional | Mappings 1 and 3: thickness [mm] mapped onto hMin..hMax. Empty = BESO's tMin..tMax inside BESO, or the field's own range elsewhere. Set it explicitly to make every component use the same mapping. |
@@ -269,6 +311,10 @@ Method 0 = Conforming: layers fit both the base and the top rim, so every layer 
 
 Method 1 = Eikonal: exact local layer heights grown from the base. The top may end in partial layers.
 
+Method 2 = Force-aligned: like Conforming, but layers turn to lie across the force flow (Force Flow from Shell Analysis), so interfaces carry compression rather than shear (Vele, Kurilla & Achten 2023).
+
+Also checks printability per point: wall lean across the bead, bead offset past the bead below, and layer tilt along the path (nozzle scraping on a 3-axis printer).
+
 **Inputs**
 
 | # | Name | Nick | Type | Access | Default | Description |
@@ -276,13 +322,17 @@ Method 1 = Eikonal: exact local layer heights grown from the base. The top may e
 | 0 | **Model** | `Model` | Generic | item | required | Shell model (for the mesh). |
 | 1 | **Layer Heights** | `h` | Number | list | required | Target layer height per vertex [mm] (from Layer Heights). |
 | 2 | Vertex Thickness | `tv` | Number | list | optional | Optional bead width per vertex [mm], passed through per point. |
-| 3 | Method | `Mth` | Integer | item | `0` | 0 = Conforming (closed layers, fits base and rim), 1 = Eikonal (exact heights). |
+| 3 | Method | `Mth` | Integer | item | `0` | 0 = Conforming (closed layers, fits base and rim), 1 = Eikonal (exact heights), 2 = Force-aligned (needs Force Flow). |
 | 4 | Vertical | `Vz` | Boolean | item | `true` | Measure layer height vertically (Z) rather than along the wall. |
 | 5 | Tolerance | `Tol` | Number | item | `0.5` | Band (document units) at the bottom/top used to find the base and the rim. |
 | 6 | Seam | `Seam` | Vector | item | `(1, 0, 0)` | Closed layers start at the point furthest in this direction. |
 | 7 | Nominal Area | `A0` | Number | item | `0.0` | Bead cross-section [mm²] that corresponds to 100% flow. 0 = median of the paths. |
 | 8 | Colour Range | `CR` | Interval | item | optional | Fix the height-error colour scale [%], e.g. -20 to 20. Empty = symmetric about 0. |
 | 9 | Legend | `Lg` | Boolean | item | `true` | Draw a colour legend in the viewport. |
+| 10 | Force Flow | `FF` | Vector | list | optional | Method 2: force flow per mesh face, from the Force Flow output of Shell Analysis (or Interlayer Check). |
+| 11 | Max Deviation | `Dev` | Number | item | `30.0` | Method 2: most the layers may turn away from the conforming layering [deg]. Larger = more aligned with the force, but steeper layer tilts. |
+| 12 | Max Overhang | `OvMax` | Number | item | `45.0` | Wall lean from vertical [deg] above which a point is flagged. 45 = where planar clay prints started to slump in Vele and Achten (2023); calibrate with docs/VALIDATION.md section 7. |
+| 13 | Max Tilt | `TiltMax` | Number | item | `30.0` | Layer slope along the path [deg] above which a point is flagged (a nozzle that cannot tilt scrapes steep layers). Calibrate with docs/VALIDATION.md section 7. |
 
 **Outputs**
 
@@ -298,6 +348,10 @@ Method 1 = Eikonal: exact local layer heights grown from the base. The top may e
 | 7 | Info | `I` | Text | item | Summary. |
 | 8 | Bead Area | `A` | Number | tree | Bead cross-section at each point [mm²] for width w and the realised height. Extruded volume per mm of path. Needs Vertex Thickness. |
 | 9 | Flow Factor | `F` | Number | tree | Flow multiplier at each point (1 = Nominal Area). Multiply your nominal extrusion / flow % by this, so the wall gets width w at the realised layer height. |
+| 10 | Wall Lean | `Lean` | Number | tree | Per point: wall lean from vertical [deg], across the bead. 0 = vertical wall. |
+| 11 | Layer Tilt | `Tilt` | Number | tree | Per point: slope of the layer along the path [deg]. |
+| 12 | Bead Offset | `Off` | Number | tree | Per point: how far the bead sits past the one below [mm] = realised height x tan(lean). |
+| 13 | Overhang Ratio | `OvR` | Number | tree | Per point: bead offset / bead width, the unsupported fraction of the bead. Needs Vertex Thickness. |
 
 ### Wall Preview
 

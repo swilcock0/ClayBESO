@@ -22,8 +22,8 @@ namespace ClayBeso.GH.Components
         protected override void RegisterInputParams(GH_InputParamManager p)
         {
             p.AddIntegerParameter("Mapping", "Map", "3 = proportional (thicker wall, taller layer), 2 = constant aspect ratio (h = k·t), 0 = constant bead area (fixed flow), 1 = linear inverse (fixed flow).", GH_ParamAccess.item, 3);
-            p.AddNumberParameter("Min Layer Height", "hMin", "Smallest layer height [mm].", GH_ParamAccess.item, 1.0);
-            p.AddNumberParameter("Max Layer Height", "hMax", "Largest layer height [mm].", GH_ParamAccess.item, 2.5);
+            p.AddNumberParameter("Min Layer Height", "hMin", "Smallest layer height [mm]. At least 0.25× nozzle diameter (0.75 mm for a 3 mm nozzle).", GH_ParamAccess.item, 1.0);
+            p.AddNumberParameter("Max Layer Height", "hMax", "Largest layer height [mm]. At most 0.75× nozzle diameter (2.25 mm for a 3 mm nozzle).", GH_ParamAccess.item, 2.25);
             p.AddNumberParameter("Bead Area", "A", "Bead cross-section [mm²] for mapping 0. 0 = automatic.", GH_ParamAccess.item, 0.0);
             p.AddNumberParameter("Aspect Ratio", "k", "Layer height / bead width for mapping 2.", GH_ParamAccess.item, 0.4);
             p.AddIntervalParameter("Thickness Range", "tR", "Mappings 1 and 3: thickness [mm] mapped onto hMin..hMax. Empty = BESO's tMin..tMax inside BESO, or the field's own range elsewhere. Set it explicitly to make every component use the same mapping.", GH_ParamAccess.item);
@@ -38,7 +38,7 @@ namespace ClayBeso.GH.Components
         protected override void SolveInstance(IGH_DataAccess da)
         {
             int map = 3;
-            double hMin = 1.0, hMax = 2.5, area = 0, k = 0.4;
+            double hMin = 1.0, hMax = 2.25, area = 0, k = 0.4;
             var iv = Interval.Unset;
             da.GetData(0, ref map);
             da.GetData(1, ref hMin);

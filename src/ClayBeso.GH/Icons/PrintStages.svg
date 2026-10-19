@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- a vase growing in three stages, the last one highlighted -->
+  <g stroke="#3B2A22" stroke-width="0.8">
+    <rect x="1.5" y="16" width="5" height="5.5" rx="1.2" fill="#E8A27E"/>
+    <rect x="9" y="11" width="5" height="10.5" rx="1.2" fill="#E8A27E"/>
+    <rect x="16.5" y="4.5" width="5.5" height="17" rx="1.2" fill="#C8643C"/>
+  </g>
+  <g stroke="#9A4527" stroke-width="0.7">
+    <path d="M 9 14.5 H 14 M 9 18 H 14"/>
+    <path d="M 16.5 8.5 H 22 M 16.5 12.5 H 22 M 16.5 16.5 H 22"/>
+  </g>
+  <path d="M 1 23 H 23" stroke="#3B2A22" stroke-width="1.1" stroke-linecap="round"/>
+</svg>

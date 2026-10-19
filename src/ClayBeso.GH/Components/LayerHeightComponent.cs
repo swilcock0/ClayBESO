@@ -27,8 +27,8 @@ namespace ClayBeso.GH.Components
         {
             p.AddGenericParameter("Model", "Model", "Shell model (for the mesh).", GH_ParamAccess.item);
             p.AddNumberParameter("Thickness", "t", "Wall thickness per face [mm].", GH_ParamAccess.list);
-            p.AddNumberParameter("Min Layer Height", "hMin", "Smallest layer height [mm]. About 0.4× nozzle diameter (0.6 mm for 1.5 mm, 1.2 mm for 3 mm).", GH_ParamAccess.item, 1.0);
-            p.AddNumberParameter("Max Layer Height", "hMax", "Largest stable layer height [mm]. About 0.8× nozzle diameter (1.2 mm for 1.5 mm, 2.4 mm for 3 mm).", GH_ParamAccess.item, 2.5);
+            p.AddNumberParameter("Min Layer Height", "hMin", "Smallest layer height [mm]. At least 0.25× nozzle diameter (Vele et al. 2023: 25-75 %), i.e. 0.4 mm for a 1.5 mm nozzle, 0.75 mm for 3 mm.", GH_ParamAccess.item, 1.0);
+            p.AddNumberParameter("Max Layer Height", "hMax", "Largest layer height [mm]. At most 0.75× nozzle diameter (Vele et al. 2023: 25-75 %), i.e. 1.1 mm for a 1.5 mm nozzle, 2.25 mm for 3 mm.", GH_ParamAccess.item, 2.25);
             p.AddIntegerParameter("Mapping", "Map", "3 = proportional (default: thicker wall, taller layer), 2 = constant aspect ratio (h = k·t), 0 = constant bead area (fixed flow), 1 = linear inverse (fixed flow).", GH_ParamAccess.item, 3);
             p.AddNumberParameter("Bead Area", "A", "Bead cross-section [mm²] for mapping 0. 0 = automatic.", GH_ParamAccess.item, 0.0);
             p.AddIntegerParameter("Smoothing", "Sm", "Smoothing passes on the height field.", GH_ParamAccess.item, 5);
@@ -52,7 +52,7 @@ namespace ClayBeso.GH.Components
         {
             object modelObj = null;
             var t = new List<double>();
-            double hMin = 1.0, hMax = 2.5, area = 0, k = 0.4;
+            double hMin = 1.0, hMax = 2.25, area = 0, k = 0.4;
             int map = 3, smooth = 5;
             if (!da.GetData(0, ref modelObj)) return;
             if (!da.GetDataList(1, t)) return;

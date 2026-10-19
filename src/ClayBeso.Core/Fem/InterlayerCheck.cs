@@ -67,6 +67,16 @@ namespace ClayBeso.Fem
         /// <summary>Unit stacking direction per face (across the layers, within the wall).</summary>
         public Vec3[] StackingDirection { get; internal set; }
 
+        /// <summary>
+        /// Angle [deg] between the force flow (dominant principal membrane force) and the stacking
+        /// direction. 0 = force crosses the layers squarely (interfaces in pure compression/tension,
+        /// the layering Vele et al. aim for); 90 = force runs along the layers (interfaces in shear).
+        /// </summary>
+        public double[] FlowAngle { get; internal set; }
+
+        /// <summary>Force flow per face (dominant principal membrane force and its direction).</summary>
+        public ForceFlowField Flow { get; internal set; }
+
         public bool IsValid(int face) => !double.IsNaN(Utilisation[face]);
     }
 
@@ -98,6 +108,7 @@ namespace ClayBeso.Fem
             int m = model.ElementCount;
             var ops = new MeshOperators(mesh);
             var heights = LayerField.RealisedFaceHeight(mesh, phi, up, vertical);
+            var flow = ForceFlow.Compute(model, result, scaling);
 
             var res = new InterlayerResult
             {
@@ -110,6 +121,8 @@ namespace ClayBeso.Fem
                 BondUtilisation = new double[m],
                 BearingUtilisation = new double[m],
                 StackingDirection = new Vec3[m],
+                FlowAngle = new double[m],
+                Flow = flow,
             };
 
             var ue = new double[18];
@@ -132,6 +145,7 @@ namespace ClayBeso.Fem
                 if (sl < 1e-12) { SetInvalid(res, e); continue; }
                 sx /= sl; sy /= sl;
                 res.StackingDirection[e] = (el.E1 * sx + el.E2 * sy).Unit();
+                res.FlowAngle[e] = ForceFlow.AxisAngle(flow.Direction[e], res.StackingDirection[e]);
 
                 ShellSolver.Gather(el, result.U, ue);
                 el.UnitResultants(ue, out var nUnit, out var mUnit, scaling.Across[e]);
@@ -182,6 +196,7 @@ namespace ClayBeso.Fem
         {
             r.LayerHeight[e] = r.Contact[e] = r.Tension[e] = r.Compression[e] = r.Shear[e] = double.NaN;
             r.Utilisation[e] = r.BondUtilisation[e] = r.BearingUtilisation[e] = double.NaN;
+            r.FlowAngle[e] = double.NaN;
         }
     }
 }

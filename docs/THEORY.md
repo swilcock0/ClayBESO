@@ -197,6 +197,48 @@ constant).
 Validation: for an axially loaded cylinder with ν = 0, compliance scales exactly with 1/κ
 (κ = 0.5 → 2.00000, κ = 0.25 → 4.00000).
 
+## 8. Force flow and interface angle
+
+Per face, the membrane forces N (local axes, actual thickness and κ) give principal forces
+`n1,2 = (Nxx + Nyy)/2 ± sqrt(((Nxx − Nyy)/2)² + Nxy²)`. The **force flow** direction is that of the
+principal with the larger magnitude, with directionality `(|n1 − n2|)/(|n1| + |n2|)` (0 = equal in all
+directions, 1 = uniaxial). The **interface angle** is the angle between that direction and the
+stacking direction s = ∇φ/|∇φ|, folded into 0–90°. Tested: vertical flow under self-weight (< 0.3°),
+and layers tilted by atan 0.4 read back as 21.8°.
+
+## 9. Overhang check
+
+At a path point with unit tangent T, wall normal n and up direction z, the horizontal direction
+across the bead is q = z × T/|z × T|. The wall's lean in the vertical plane through q is
+`θ = atan(|n·z| / |n·q|)`. It is 0 for a vertical wall whatever the layer tilt, and equals the cone
+angle for horizontal layers on a cone. With Δz the realised vertical layer height:
+
+```
+offset = Δz · tan θ        ratio = offset / w        tilt = asin(|T·z|)
+```
+
+Tested on a 30° cone with 2 mm layers and 6 mm beads: θ = 30.01°, offset 1.155 mm, ratio 0.192.
+
+## 10. Force-aligned layers
+
+The conforming method's stacking direction d0 (from the harmonic field ψ) is turned, face by face,
+towards the force flow f projected into the face. f's sign is chosen so f·d0 > 0. The turn angle is
+`min(∠(d0, f), maxDeviation) × directionality`, followed by a few passes of neighbour averaging. The
+turned unit field, times the slowness s = c_z/h, is then the target gradient of the same base- and
+rim-pinned least-squares fit as before. Each layer therefore stays closed, and its spacing still
+follows h. This is Vele, Kurilla & Achten's "layers perpendicular to the force-flow lines, limited
+by α", extended from 2D walls to 3D shells.
+
+## 11. Print stages
+
+Stage k keeps the faces with φ ≤ k at all three corners, renumbers them into a new shell with the
+same supports, material and gravity (point loads optional), and solves it. With the orthotropic
+option, κ = η·c uses each face's realised layer height. The interlayer check then runs on that
+stage. Results map back to the full mesh (NaN or zero where not yet printed). Tested: the last
+stage equals the full model; a half-height stage equals a half-height cylinder built directly
+(displacement to 12 digits). Not modelled yet: the stiffening of clay with time (younger layers are
+softer), and buckling.
+
 ## References
 
 - Batoz, Bathe, Ho (1980). A study of three-node triangular plate bending elements. IJNME 15.
@@ -205,3 +247,6 @@ Validation: for an axially loaded cylinder with ν = 0, compliance scales exactl
 - Huang, Xie (2011). ETO of continuum structures including design-dependent self-weight loads. FEAD 47.
 - Kimmel, Sethian (1998). Computing geodesic paths on manifolds. PNAS 95.
 - Scordelis, Lo (1964); MacNeal, Harder (1985) — standard shell benchmarks.
+- Vele, Kurilla, Achten (2023). Improving buildability of overhangs of 3D printed objects through non-planar slicing informed by force flow analysis. eCAADe 41, vol. 1, 519–526.
+- Vele, Achten (2023). Clay non-planar printing of overhangs. 1st DARE Conference (manuscript).
+- Friedman-Gerlicz, Gelosi, Bell, Buechley (2024). WeaveSlicer: expanding the range of printable geometries in clay. CHI '24.

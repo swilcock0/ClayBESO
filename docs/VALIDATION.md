@@ -60,7 +60,7 @@ into machine units.
 
 1. **Straight-wall matrix.** Print single-bead walls 150 mm long and 30 layers high at fixed feed.
     - Nozzles: 1.5 and 3 mm.
-    - h = 0.4, 0.6 and 0.8 × nozzle.
+    - h = 0.25, 0.5 and 0.75 × nozzle (the printable range in Vele, Kurilla & Achten 2023).
     - Flow factor F = 0.6, 0.8, 1.0, 1.2, 1.5 and 2.0.
     - Measure: bead width with calipers at 5 points on 5 layers; layer height from total height ÷
       layer count; cross-section area from a photographed cut through the wall.
@@ -69,7 +69,10 @@ into machine units.
    Area into G-code values.
 3. **Response to flow changes.** Print one wall with a step change in F halfway along, and one with
    F rising linearly. Measure the length over which the width settles. This sets how sharply the
-   thickness field can vary along a path (the smoothing passes in Layer Heights).
+   thickness field can vary along a path (the smoothing passes in Layer Heights). Also measure
+   the **lead**: the path length by which a flow change must be sent early so the width changes at
+   the right place. Vele & Achten (2023) found ram extruders need the flow changed "slightly in
+   advance", and combined flow and speed changes for very low or very tall layers.
 
 Pass criteria:
 
@@ -187,7 +190,7 @@ Check that printed layers follow the plugin's layer field: their heights, widths
 far the field can vary before printing fails. The toolpaths come from the student's own path
 design, so the same test also validates that design.
 
-1. **Realised heights.** Print the reference vase with the proportional mapping (1–2.5 mm layers).
+1. **Realised heights.** Print the reference vase with the proportional mapping (1–2.25 mm layers).
    Scan it and measure the layer height around the circumference at 8 angles and 5 heights, by
    counting layer lines in the scan. Compare with the Realised Height output at the same points.
 2. **Width.** Cut the vase at 3 heights after firing. Measure the wall thickness at 8 angles and
@@ -195,8 +198,18 @@ design, so the same test also validates that design.
 3. **Tilt limit.** Print rings whose layer height varies around the loop, from 1:1 up to 1:3
    (min:max) in steps. Record the ratio at which beads slip, drag or separate. That ratio becomes
    a warning threshold in Non-planar Layers.
-4. **Methods.** Print the same vase with the Conforming and the Eikonal method. Compare rim quality
-   and the partial top layers.
+4. **Methods.** Print the same vase with the Conforming, Eikonal and Force-aligned methods. Compare
+   rim quality, the partial top layers and how far the force-aligned layers depart from planar.
+5. **Overhang series** (after Vele & Achten 2023). Print vase-like pieces with symmetric overhangs
+   from 10° to 80° in 5° steps, each sliced planar and with force-aligned non-planar layers (same
+   layer count and clay). Record the overhang at which layers start to slump and the one at which
+   the print collapses, for each slicing. Their clay on a 4 mm delta printer started deforming at
+   45° and failed above 55° planar, and reached 70–80° non-planar. The planar limit becomes the
+   **Max Overhang** default in Non-planar Layers, and the bead offset ratio at failure the
+   overhang-ratio warning. Watch for their two non-planar failure modes: nozzle scraping on steep
+   layer tilts (3-axis printer), and tipping from one-sided heavy top layers.
+6. **Print stages.** For the reference vase and the overhang pieces, compare the stage the Print
+   Stages component predicts as worst with the height at which deformation was first seen.
 
 Pass criteria:
 
@@ -204,6 +217,8 @@ Pass criteria:
 - Fired wall thickness within ±15 % of the BESO thickness (allowing for the measured firing
   shrinkage).
 - No collapse or bead separation within the tilt limit found in test 3.
+- The Non-planar Layers overhang warnings flag every piece in test 5 that slumped, and no more than
+  one size class beyond it.
 
 ## 8. Test sequence, equipment and records
 

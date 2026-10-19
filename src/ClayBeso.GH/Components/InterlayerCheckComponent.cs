@@ -54,6 +54,8 @@ namespace ClayBeso.GH.Components
             p.AddMeshParameter("Preview", "P", "Mesh coloured by utilisation (grey = not checked).", GH_ParamAccess.item);
             p.AddPointParameter("Worst Point", "Umax", "Centre of the face with the highest utilisation.", GH_ParamAccess.item);
             p.AddTextParameter("Info", "I", "Summary.", GH_ParamAccess.item);
+            p.AddNumberParameter("Interface Angle", "θf", "Per face: angle [deg] between the force flow and the stacking direction. 0 = force crosses the layers squarely (interfaces in compression/tension); 90 = force runs along the layers (interfaces in shear, layers can slide).", GH_ParamAccess.list);
+            p.AddVectorParameter("Force Flow", "FF", "Per face: dominant principal in-plane force direction; length 0-1 = how directional it is.", GH_ParamAccess.list);
         }
 
         protected override void SolveInstance(IGH_DataAccess da)
@@ -128,7 +130,9 @@ namespace ClayBeso.GH.Components
                     $"  wall {t[worst]:G3} mm, layer {check.LayerHeight[worst]:G3} mm, contact {check.Contact[worst]:P0}\n" +
                     $"Faces over 1: {failing} of {valid.Length} checked ({u.Length - valid.Length} without a layer direction)\n" +
                     $"Contact range {valid.Min(e => check.Contact[e]):P0}-{valid.Max(e => check.Contact[e]):P0}, " +
-                    $"f = {strength:G3} MPa, η = {eta:G3}");
+                    $"f = {strength:G3} MPa, η = {eta:G3}\n" + AngleInfo(check, valid));
+                da.SetDataList(11, check.FlowAngle);
+                da.SetDataList(12, FlowConvert.ToVectors(check.Flow));
 
                 if (failing > 0)
                     AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"{failing} faces exceed the interlayer capacity (utilisation > 1).");
@@ -140,6 +144,15 @@ namespace ClayBeso.GH.Components
             {
                 AddRuntimeMessage(GH_RuntimeMessageLevel.Error, ex.Message);
             }
+        }
+
+        private static string AngleInfo(InterlayerResult check, int[] valid)
+        {
+            // Force-weighted mean, so faces carrying little force don't dominate.
+            double wsum = valid.Sum(e => System.Math.Abs(check.Flow.Dominant[e]));
+            double mean = wsum > 0 ? valid.Sum(e => check.FlowAngle[e] * System.Math.Abs(check.Flow.Dominant[e])) / wsum : 0;
+            int steep = valid.Count(e => check.FlowAngle[e] > 45);
+            return $"Interface angle (force-weighted mean) {mean:F1}°, {steep} of {valid.Length} faces above 45° (interfaces mostly in shear)";
         }
     }
 }

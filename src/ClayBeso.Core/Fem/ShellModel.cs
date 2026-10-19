@@ -64,6 +64,9 @@ namespace ClayBeso.Fem
 
         public bool HasSelfWeight { get; }
 
+        /// <summary>Gravity direction scaled by the gravity factor (zero when self-weight is off).</summary>
+        public Vec3 Gravity { get; }
+
         public int NodeCount => Mesh.VertexCount;
         public int ElementCount => Elements.Length;
 
@@ -105,6 +108,7 @@ namespace ClayBeso.Fem
                 UnitSelfWeight[e] = gravity * (material.UnitWeight * Elements[e].Area / 3.0);
             }
             HasSelfWeight = gravity.Length > 0 && material.UnitWeight > 0;
+            Gravity = gravity;
 
             // Nodes not attached to any element would make K singular.
             var used = new bool[n];

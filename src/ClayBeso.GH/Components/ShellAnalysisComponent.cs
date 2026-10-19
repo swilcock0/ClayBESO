@@ -45,6 +45,7 @@ namespace ClayBeso.GH.Components
             p.AddMeshParameter("Preview", "P", "Deformed mesh coloured by von Mises stress.", GH_ParamAccess.item);
             p.AddTextParameter("Info", "I", "Summary.", GH_ParamAccess.item);
             p.AddPointParameter("Max Stress Point", "σMax", "Centre of the face with the highest von Mises stress.", GH_ParamAccess.item);
+            p.AddVectorParameter("Force Flow", "FF", "Per face: direction of the dominant principal in-plane force (the force-flow line direction); length 0-1 = how directional it is (0 = equal in all directions). Feed it to Non-planar Layers (Method 2).", GH_ParamAccess.list);
         }
 
         protected override void SolveInstance(IGH_DataAccess da)
@@ -109,6 +110,7 @@ namespace ClayBeso.GH.Components
                 double zMin = model.Mesh.Vertices.Min(v => v.Z), zTop = model.Mesh.Vertices.Max(v => v.Z);
                 var sorted = vm.OrderBy(x => x).ToArray();
                 da.SetData(7, RhinoConvert.ToPoint(centre, s));
+                da.SetDataList(8, FlowConvert.ToVectors(ForceFlow.Compute(model, r, scaling)));
                 da.SetData(6,
                     $"Equations: {solver.EquationCount}\nCompliance: {r.Compliance:G5} N·mm\n" +
                     $"Max displacement: {r.MaxDisplacement:G4} mm\n" +

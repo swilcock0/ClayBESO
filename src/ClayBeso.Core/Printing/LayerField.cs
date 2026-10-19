@@ -18,6 +18,14 @@ namespace ClayBeso.Printing
         /// exact, but the top can end in partial layers.
         /// </summary>
         Eikonal = 1,
+
+        /// <summary>
+        /// Like <see cref="Conforming"/>, but the stacking direction on each face is turned towards the
+        /// force flow, so layers lie across the force and interfaces carry it as compression rather than
+        /// shear (Vele, Kurilla &amp; Achten 2023). The turn is limited to a maximum deviation and
+        /// scaled by how directional the force is.
+        /// </summary>
+        ForceAligned = 2,
     }
 
     /// <summary>
@@ -61,6 +69,11 @@ namespace ClayBeso.Printing
         /// <param name="topVertices">Top rim (conforming mode only; may be empty).</param>
         /// <param name="up">Build direction.</param>
         /// <param name="vertical">Measure layer height along the build direction instead of along the surface.</param>
+        /// <param name="flow">Force-aligned method: force flow per face. Direction = the force direction,
+        /// length 0..1 = how directional it is (0 = no preference, keep the conforming direction).</param>
+        /// <param name="maxDeviationDeg">Force-aligned method: most the stacking direction may turn from the
+        /// conforming one [deg].</param>
+        /// <param name="smoothing">Force-aligned method: smoothing passes on the direction field.</param>
         public static LayerField Compute(
             TriMesh mesh,
             IList<double> layerHeight,
@@ -68,8 +81,13 @@ namespace ClayBeso.Printing
             IList<int> topVertices,
             Vec3 up,
             bool vertical,
-            LayerMethod method)
+            LayerMethod method,
+            IList<Vec3> flow = null,
+            double maxDeviationDeg = 30,
+            int smoothing = 5)
         {
+            if (method == LayerMethod.ForceAligned && (flow == null || flow.Count != mesh.FaceCount))
+                throw new ArgumentException("Force-aligned layers need a force flow vector per mesh face.");
             if (layerHeight.Count != mesh.VertexCount) throw new ArgumentException("Need one layer height per vertex.");
             if (baseVertices == null || baseVertices.Count == 0) throw new ArgumentException("No base vertices.");
             up = up.Unit();
@@ -90,12 +108,14 @@ namespace ClayBeso.Printing
             }
             else
             {
-                phi = Conforming(mesh, slowness, baseSet, top, out count);
+                phi = Conforming(mesh, slowness, baseSet, top, out count,
+                    method == LayerMethod.ForceAligned ? flow : null, maxDeviationDeg, smoothing);
             }
             return new LayerField(mesh, phi, baseSet.ToArray(), top, layerHeight.ToArray(), factor, count);
         }
 
-        private static double[] Conforming(TriMesh mesh, double[] slowness, HashSet<int> baseSet, int[] top, out int count)
+        private static double[] Conforming(TriMesh mesh, double[] slowness, HashSet<int> baseSet, int[] top, out int count,
+            IList<Vec3> flow = null, double maxDeviationDeg = 30, int smoothing = 5)
         {
             var ops = new MeshOperators(mesh);
 
@@ -106,13 +126,16 @@ namespace ClayBeso.Printing
             var psi = ops.SolveLeastSquaresGradient(null, bc);
 
             // 2) Target gradient: unit stacking direction scaled by the local layer density.
+            var dir = new Vec3[mesh.FaceCount];
+            for (int f = 0; f < mesh.FaceCount; f++) dir[f] = ops.FaceGradient(f, psi).Unit();
+            if (flow != null) dir = TurnTowardsFlow(mesh, dir, flow, maxDeviationDeg, smoothing);
+
             var target = new Vec3[mesh.FaceCount];
             for (int f = 0; f < mesh.FaceCount; f++)
             {
                 var t = mesh.Faces[f];
-                var d = ops.FaceGradient(f, psi).Unit();
                 double s = (slowness[t[0]] + slowness[t[1]] + slowness[t[2]]) / 3.0;
-                target[f] = d * s;
+                target[f] = dir[f] * s;
             }
 
             // 3) Fit with only the base pinned, to find how many layers the targets imply...
@@ -125,6 +148,73 @@ namespace ClayBeso.Printing
             // 4) ...then pin the rim to that whole number so the last layer closes.
             foreach (int v in top) baseOnly[v] = count;
             return ops.SolveLeastSquaresGradient(target, baseOnly);
+        }
+
+        /// <summary>
+        /// Turn each face's stacking direction towards the force flow (sign chosen to point upwards
+        /// with the conforming direction) by at most maxDeviation, scaled by the flow's
+        /// directionality; then smooth the field across neighbouring faces.
+        /// </summary>
+        private static Vec3[] TurnTowardsFlow(TriMesh mesh, Vec3[] dir0, IList<Vec3> flow, double maxDeviationDeg, int smoothing)
+        {
+            var normals = mesh.FaceNormals;
+            double maxDev = Math.Max(0, maxDeviationDeg) * Math.PI / 180;
+            var dir = new Vec3[dir0.Length];
+            for (int f = 0; f < dir.Length; f++)
+            {
+                var d0 = dir0[f];
+                var n = normals[f];
+                double weight = Math.Min(1, flow[f].Length);
+                var fl = flow[f] - n * Vec3.Dot(flow[f], n);
+                if (weight < 1e-9 || fl.Length < 1e-12 || d0.Length < 1e-12) { dir[f] = d0; continue; }
+                fl = fl.Unit();
+                if (Vec3.Dot(fl, d0) < 0) fl = -fl;
+                var side = fl - d0 * Vec3.Dot(fl, d0);
+                double angle = Math.Acos(Math.Min(1, Vec3.Dot(fl, d0)));
+                if (side.Length < 1e-12) { dir[f] = d0; continue; }
+                double turn = Math.Min(angle, maxDev) * weight;
+                dir[f] = (d0 * Math.Cos(turn) + side.Unit() * Math.Sin(turn)).Unit();
+            }
+
+            if (smoothing > 0)
+            {
+                var neighbours = FaceNeighbours(mesh);
+                var tmp = new Vec3[dir.Length];
+                for (int it = 0; it < smoothing; it++)
+                {
+                    for (int f = 0; f < dir.Length; f++)
+                    {
+                        var sum = dir[f];
+                        foreach (int g in neighbours[f]) sum += Vec3.Dot(dir[g], dir[f]) >= 0 ? dir[g] : -dir[g];
+                        var n = normals[f];
+                        sum -= n * Vec3.Dot(sum, n);
+                        tmp[f] = sum.Length > 1e-12 ? sum.Unit() : dir[f];
+                    }
+                    Array.Copy(tmp, dir, dir.Length);
+                }
+            }
+            return dir;
+        }
+
+        private static List<int>[] FaceNeighbours(TriMesh mesh)
+        {
+            var byEdge = new Dictionary<(int, int), List<int>>();
+            for (int f = 0; f < mesh.FaceCount; f++)
+            {
+                var t = mesh.Faces[f];
+                for (int k = 0; k < 3; k++)
+                {
+                    int a = t[k], b = t[(k + 1) % 3];
+                    var key = a < b ? (a, b) : (b, a);
+                    if (!byEdge.TryGetValue(key, out var list)) byEdge[key] = list = new List<int>(2);
+                    list.Add(f);
+                }
+            }
+            var result = new List<int>[mesh.FaceCount];
+            for (int f = 0; f < result.Length; f++) result[f] = new List<int>(3);
+            foreach (var list in byEdge.Values)
+                if (list.Count == 2) { result[list[0]].Add(list[1]); result[list[1]].Add(list[0]); }
+            return result;
         }
 
         /// <summary>

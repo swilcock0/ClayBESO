@@ -27,6 +27,9 @@ namespace ClayBeso.Printing
         /// Empty if no thickness was given.
         /// </summary>
         public List<double> BeadArea { get; } = new List<double>();
+
+        /// <summary>Unit wall normal (mid-surface) at each point.</summary>
+        public List<Vec3> Normals { get; } = new List<Vec3>();
     }
 
     /// <summary>Extracts iso-curves of a <see cref="LayerField"/> as ordered polylines.</summary>
@@ -61,6 +64,7 @@ namespace ClayBeso.Printing
         {
             public Vec3 Point;
             public double H, T;
+            public Vec3 N;
         }
 
         private static IEnumerable<LayerPath> Contour(
@@ -92,6 +96,7 @@ namespace ClayBeso.Printing
                             Point = mesh.Vertices[a] + (mesh.Vertices[b] - mesh.Vertices[a]) * s,
                             H = h[a] + (h[b] - h[a]) * s,
                             T = thick == null ? 0 : thick[a] + (thick[b] - thick[a]) * s,
+                            N = (mesh.VertexNormals[a] * (1 - s) + mesh.VertexNormals[b] * s).Unit(),
                         };
                     }
                     keys.Add(key);
@@ -152,6 +157,7 @@ namespace ClayBeso.Printing
         private static void Add(LayerPath p, Crossing c, double realised)
         {
             p.Points.Add(c.Point);
+            p.Normals.Add(c.N);
             p.TargetHeight.Add(c.H);
             p.Width.Add(c.T);
             p.RealisedHeight.Add(realised);
@@ -182,12 +188,12 @@ namespace ClayBeso.Printing
 
         private static void ReverseAll(LayerPath p)
         {
-            p.Points.Reverse(); p.TargetHeight.Reverse(); p.Width.Reverse(); p.RealisedHeight.Reverse(); p.BeadArea.Reverse();
+            p.Points.Reverse(); p.TargetHeight.Reverse(); p.Width.Reverse(); p.RealisedHeight.Reverse(); p.BeadArea.Reverse(); p.Normals.Reverse();
         }
 
         private static void RotateAll(LayerPath p, int start)
         {
-            Rotate(p.Points, start); Rotate(p.TargetHeight, start); Rotate(p.Width, start); Rotate(p.RealisedHeight, start); Rotate(p.BeadArea, start);
+            Rotate(p.Points, start); Rotate(p.TargetHeight, start); Rotate(p.Width, start); Rotate(p.RealisedHeight, start); Rotate(p.BeadArea, start); Rotate(p.Normals, start);
         }
 
         private static void Rotate<T>(List<T> list, int start)

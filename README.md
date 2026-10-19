@@ -54,7 +54,8 @@ Every input and output of every component (type, default, units) is listed in
 | 1 Model | **Clay Material** | E [MPa], ν, density [kg/m³], optional strength [MPa]. Defaults = green clay. |
 | 1 Model | **Shell Model** | Mesh + material + thickness [mm] + supports (auto base) + loads → model. |
 | 2 Analyse | **Shell Analysis** | Displacements, von Mises stress, compliance, deformed preview. |
-| 2 Analyse | **Interlayer Check** | Stresses across the printed layer interfaces vs a bond strength that drops with layer height. |
+| 2 Analyse | **Interlayer Check** | Stresses across the printed layer interfaces vs a bond strength that drops with layer height; interface angle to the force flow. |
+| 2 Analyse | **Print Stages** | Analyses the piece as it is being printed, stage by stage, and finds the most critical moment. |
 | 3 Optimise | **Shell BESO** | Live BESO loop (Run / Reset). Mode 0 = thickness, 1 = void. |
 | 4 Print | **Layer Rule** | One thickness → layer-height rule shared by Layer Heights, Shell BESO and Shell Analysis. |
 | 4 Print | **Layer Heights** | Thickness per face → target layer height per vertex. |
@@ -122,6 +123,9 @@ Surface/Brep ──Mesh (QuadRemesh or Mesh Surface)──► Shell Model ◄─
      Heights are matched as closely as the geometry allows. Check the *Info* and *Preview*
      (colour = height error).
    - *Method 1 (Eikonal)*: heights are matched exactly, but the top may end in partial layers.
+   - *Method 2 (Force-aligned)*: like Conforming, but layers turn to lie across the force flow
+     (connect **Force Flow** from Shell Analysis). See *Overhangs, force flow and print stages* below.
+   - The overhang check (Wall Lean, Bead Offset, Overhang Ratio, Layer Tilt) runs on every path.
    - Connect **Vertex Thickness** from Layer Heights to get the per-point **Bead Area** and
      **Flow Factor**. The flow factor is the clay volume needed at that point, relative to the
      *Nominal Area* (default: the median). Multiply your nominal extrusion by it.
@@ -133,13 +137,14 @@ Surface/Brep ──Mesh (QuadRemesh or Mesh Surface)──► Shell Model ◄─
 ## Printer settings (Delta WASP 40100 Clay, 1.5–3 mm nozzles)
 
 Build volume Ø400 × 1000 mm. Rules of thumb for a single-bead wall. Calibrate them with a
-test print for your clay body:
+test print for your clay body. Layer heights follow the 25–75 % of nozzle diameter range from
+Vele, Kurilla & Achten (eCAADe 2023):
 
 | Nozzle | tMin – tMax (bead width) | hMin – hMax (layer height) | aspect k |
 |---|---|---|---|
-| 1.5 mm | 1.8 – 3.5 mm | 0.6 – 1.2 mm | 0.35–0.45 |
-| 2.0 mm | 2.4 – 4.6 mm | 0.8 – 1.6 mm | 0.35–0.45 |
-| 3.0 mm | 3.5 – 7.0 mm | 1.2 – 2.4 mm | 0.35–0.45 |
+| 1.5 mm | 1.8 – 3.5 mm | 0.4 – 1.1 mm | 0.35–0.45 |
+| 2.0 mm | 2.4 – 4.6 mm | 0.5 – 1.5 mm | 0.35–0.45 |
+| 3.0 mm | 3.5 – 7.0 mm | 0.75 – 2.25 mm | 0.35–0.45 |
 
 The component defaults are set for a 3 mm nozzle. Keep the **flow factor** range within what
 your extruder can follow quickly. Compare the min–max shown in the *Info* output against what
@@ -215,12 +220,46 @@ Layer Rule ──► Shell BESO ──t──► Layer Heights ──h──► 
 - Layer directions are taken as horizontal inside BESO; the Interlayer Check uses the real
   non-planar layers afterwards.
 - With the proportional mapping, h grows with t, so the contact fraction c stays roughly constant
-  and κ mostly acts as a near-uniform across-layer weakening (η × 0.64–0.71 with the defaults). That
+  and κ mostly acts as a near-uniform across-layer weakening (η × 0.68–0.71 with the defaults). That
   still changes where BESO puts clay: in the test case the layer-aware design is about 2% stiffer
   than the layer-naive one when both are judged with layers. Mappings where h does not follow t
   (e.g. constant bead area) make κ vary with thickness, and BESO then trades layer contact
   against wall thickness.
 - Shell BESO's Info shows the rule, η and the κ range.
+
+## Overhangs, force flow and print stages
+
+These follow two studies of non-planar clay printing by Vele, Kurilla & Achten (eCAADe 2023, and
+Vele & Achten, DARE 2023). Planar clay prints started to slump at about 45° of overhang and failed
+above 55°, while non-planar layers reached 70–80°. The weak point is the layer interface: on an
+overhang it is loaded in shear and layers slide.
+
+- **Overhang check** (Non-planar Layers, always on). At every path point:
+  - **Wall Lean**: how far the wall leans from vertical across the bead.
+  - **Bead Offset** = realised layer height × tan(lean): how far the bead sits past the one below.
+  - **Overhang Ratio** = offset ÷ bead width: the unsupported fraction of the bead.
+  - **Layer Tilt**: the layer's slope along the path. The WASP 40100 can't tilt its nozzle, so steep
+    tilts scrape the clay, which is one of the failures Vele & Achten saw.
+
+  Points beyond **Max Overhang** (default 45°), a ratio of 0.5, or **Max Tilt** (default 30°) are
+  counted in *Info* and raise warnings. Lower layers over an overhang reduce the bead offset; this is
+  why condensed non-planar layers help.
+- **Force flow and interface angle.** Shell Analysis and Interlayer Check output the **Force Flow**:
+  the direction of the dominant in-plane force on each face, with its length (0–1) saying how
+  directional the force is. Interlayer Check also gives the **Interface Angle** between the force and
+  the stacking direction. 0° means the force crosses the layers squarely (interfaces in compression);
+  90° means it runs along them (interfaces in shear).
+- **Force-aligned layers** (Non-planar Layers, Method 2). Connect Force Flow, and the layers turn to
+  lie across the force, by at most **Max Deviation** (default 30°). Every layer stays a closed loop.
+  In a test cylinder pushed sideways at the rim, the force-weighted interface angle dropped from 26°
+  to 18°. Under pure self-weight the force is vertical and the layers stay planar.
+- **Print Stages** (Analyse tab). Overhangs fail *during* printing. This component analyses the piece
+  at N stages, each with only the layers printed so far loaded by their own weight, plus the
+  interlayer check. It reports the height, displacement, stress and interlayer utilisation per stage
+  and picks out the worst one. Clay stiffness is taken as the same at every height for now.
+
+The tests to calibrate Max Overhang and Max Tilt for your clay and printer are in
+`docs/VALIDATION.md` §7.
 
 ## Units
 

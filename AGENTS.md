@@ -45,7 +45,8 @@ A Grasshopper plugin (Rhino 8) that:
   is raised to allow taller layers.** The default layer mapping is therefore *proportional*
   (thicker wall → taller layer). Don't frame thick walls as coming from squashing: the
   squash-based mappings 0 and 1 exist only for fixed-flow printers.
-- Component defaults target a 3 mm nozzle (tMin 3.5, tMax 7, hMin 1.0, hMax 2.5 mm).
+- Component defaults target a 3 mm nozzle (tMin 3.5, tMax 7, hMin 1.0, hMax 2.25 mm). Layer height stays within
+  25–75 % of the nozzle diameter (Vele, Kurilla & Achten, eCAADe 2023).
 - G-code export is not implemented. Before writing it, ask the user for a sample G-code file
   from their current WASP workflow to match the header, E-axis convention (absolute/relative,
   volumetric or not) and flow commands. Don't guess firmware specifics.
@@ -177,8 +178,14 @@ into the Grasshopper Libraries folder. Rhino must be restarted to load a new bui
   and the layered sensitivities checked by finite differences (`LayeredSensitivityMatchesFiniteDifference`).
   Open: real (non-planar) layer directions inside BESO (currently horizontal), and calibrating η (docs/VALIDATION.md §4).
 
-- Linear elastic, small displacements, one load case, analysis of the finished geometry only.
-  No layer-by-layer (staged) analysis of the print process, no buckling check. Wet-clay walls
+- **Overhangs (done):** `Printing/OverhangCheck` (lean, bead offset, ratio, tilt per path point),
+  `Fem/ForceFlow` (principal force direction, interface angle in `InterlayerCheck`),
+  `LayerMethod.ForceAligned` (stacking direction turned towards the force flow, limited by a max
+  deviation), and `Fem/PrintStages` (analysis of each partly printed stage). Source: Vele, Kurilla &
+  Achten 2023 (PDFs are in the git-ignored `Amir/` folder). Open: clay ageing in stages (younger
+  layers softer), and default limits calibrated by docs/VALIDATION.md §7.
+- Linear elastic, small displacements, one load case. Print stages exist, but there is no
+  buckling check. Wet-clay walls
   often fail by buckling, so a linear buckling analysis is a high-value addition.
 - Better membrane element (ANDES OPT) for accuracy on coarse meshes.
 - Sensitivity filter uses straight-line distance. A geodesic filter would avoid leaking across
