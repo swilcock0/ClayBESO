@@ -78,6 +78,15 @@ Built plugin: `src/ClayBeso.GH/bin/Release/net7.0-windows/` (Rhino 8 default run
 `.../net48/` (Rhino 8 started with the .NET Framework runtime). `scripts/install.ps1` copies it
 into the Grasshopper Libraries folder. Rhino must be restarted to load a new build.
 
+## Releasing (only when the user asks)
+
+1. Bump `<Version>` in `src/ClayBeso.GH/ClayBeso.GH.csproj` and `Version` in
+   `src/ClayBeso.GH/ClayBesoInfo.cs` (semantic versioning: 0.x.y).
+2. Build and test, then run `scripts/package.ps1`. It writes `artifacts/claybeso-<version>-rh8_0-win.yak`.
+3. Commit, tag `v<version>`, push the commit and the tag, then
+   `gh release create v<version> artifacts/claybeso-<version>-rh8_0-win.yak --title ... --notes ...`.
+4. Don't `yak push` to the public McNeel package server unless the user explicitly asks.
+
 ## Ground rules (do not break these)
 
 1. **Units inside the core are N, mm, MPa, kg/m³.** Geometry is converted to mm on the way in

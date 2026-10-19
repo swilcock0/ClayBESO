@@ -6,3 +6,4 @@ obj/
 TestResults/
 *.3dmbak
 *.ghbak
+artifacts/

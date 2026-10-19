@@ -16,6 +16,12 @@ No other plugins or licences are needed.
 
 ## Install
 
+**Easiest:** download the `.yak` file from the
+[latest release](https://github.com/swilcock0/ClayBESO/releases/latest) and **drag it onto an
+open Rhino 8 window**. Then restart Rhino. To uninstall, use `_PackageManager` → Installed.
+
+Manual install:
+
 1. Install **Rhino 8**.
 2. Get the built plugin, either:
    - from a colleague: the folder containing `ClayBeso.gha`, `ClayBeso.Core.dll` and `CSparse.dll`, or
