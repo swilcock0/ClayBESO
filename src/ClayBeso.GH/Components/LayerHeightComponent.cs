@@ -7,7 +7,7 @@ using Grasshopper.Kernel;
 
 namespace ClayBeso.GH.Components
 {
-    public class LayerHeightComponent : GH_Component
+    public class LayerHeightComponent : LegendComponent
     {
         public LayerHeightComponent()
             : base("Layer Heights", "LayerH",
@@ -32,6 +32,8 @@ namespace ClayBeso.GH.Components
             p.AddNumberParameter("Bead Area", "A", "Bead cross-section [mm²] for mapping 0. 0 = automatic.", GH_ParamAccess.item, 0.0);
             p.AddIntegerParameter("Smoothing", "Sm", "Smoothing passes on the height field.", GH_ParamAccess.item, 5);
             p.AddNumberParameter("Aspect Ratio", "k", "Layer height / bead width for mapping 2. Clay beads are typically 0.3-0.5.", GH_ParamAccess.item, 0.4);
+            p.AddIntervalParameter("Colour Range", "CR", "Fix the layer-height colour scale [mm]. Empty = hMin to hMax.", GH_ParamAccess.item);
+            p.AddBooleanParameter("Legend", "Lg", "Draw a colour legend in the viewport.", GH_ParamAccess.item, true);
             for (int i = 2; i < p.ParamCount; i++) p[i].Optional = true;
         }
 
@@ -57,6 +59,9 @@ namespace ClayBeso.GH.Components
             da.GetData(5, ref area);
             da.GetData(6, ref smooth);
             da.GetData(7, ref k);
+            bool legend = true;
+            da.GetData(9, ref legend);
+            var range = ReadRange(da, 8, (hMin, hMax));
 
             var model = RhinoConvert.Unwrap<ShellModel>(modelObj);
             if (model == null) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Input is not a Shell Model."); return; }
@@ -70,7 +75,8 @@ namespace ClayBeso.GH.Components
                 da.SetDataList(0, h);
                 da.SetDataList(1, model.Mesh.FaceToVertex(tf));
                 da.SetData(2, used);
-                da.SetData(3, Preview.VertexColoured(model.Mesh, h, model.UnitScale));
+                da.SetData(3, Preview.VertexColoured(model.Mesh, h, model.UnitScale, out var usedRange, range));
+                SetLegend("Layer height", "mm", usedRange, legend);
             }
             catch (Exception ex)
             {

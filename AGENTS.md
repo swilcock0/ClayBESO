@@ -102,6 +102,8 @@ into the Grasshopper Libraries folder. Rhino must be restarted to load a new bui
    no `System.Range` / `^1` indexing). The GH project targets net48 as well.
 7. The only third-party dependency is **CSparse** (sparse Cholesky, MIT). Ask before adding
    others. Rhino packages are references only (`ExcludeAssets="runtime"`).
+8. **No AI attribution in git history.** Commit messages and pull request descriptions must
+   not contain `Co-Authored-By:` trailers for AI assistants, or "Generated with …" lines.
 
 ## Key design facts (read before editing the maths)
 
@@ -134,9 +136,13 @@ into the Grasshopper Libraries folder. Rhino must be restarted to load a new bui
 4. Give every input/output a description that states its **units**.
 5. Catch exceptions and report them with `AddRuntimeMessage(GH_RuntimeMessageLevel.Error, ...)`.
    Never let an exception escape `SolveInstance`.
-6. Pass models between components as plain objects (generic parameter). Read them with
+6. If the component outputs a false-colour preview mesh, derive from `Common/LegendComponent`
+   instead of `GH_Component`. Add *Colour Range* (interval) and *Legend* (bool) inputs at the
+   end, colour with `Preview.FaceColoured/VertexColoured(..., out used, range)`, then call
+   `SetLegend(title, unit, used, show)` so the legend matches the mesh.
+7. Pass models between components as plain objects (generic parameter). Read them with
    `RhinoConvert.Unwrap<T>()`.
-7. Build, run tests, list the component in `README.md`.
+8. Build, run tests, list the component in `README.md`.
 
 ## Known limitations / roadmap (good next tasks)
 

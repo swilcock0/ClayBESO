@@ -24,8 +24,13 @@ namespace ClayBeso.Optimisation
         /// <summary>
         /// Target material volume as a fraction of the reference volume (design area x tMax in
         /// thickness mode, design area x wall thickness in void mode).
+        /// Thickness mode: 0 (default) keeps the starting volume (the Shell Model thickness), so the
+        /// optimiser only redistributes the clay and doesn't reduce it.
         /// </summary>
-        public double VolumeFraction { get; set; } = 0.5;
+        public double VolumeFraction { get; set; } = 0;
+
+        /// <summary>Thickness mode with no volume fraction: redistribute the starting volume.</summary>
+        public bool KeepVolume => Mode == BesoMode.Thickness && VolumeFraction <= 0;
 
         /// <summary>Evolutionary ratio: maximum relative volume change per iteration.</summary>
         public double EvolutionRate { get; set; } = 0.03;
@@ -57,14 +62,29 @@ namespace ClayBeso.Optimisation
         /// <summary>Maximum fraction of the design volume re-admitted per iteration.</summary>
         public double MaxAdmissionRatio { get; set; } = 0.02;
 
+        /// <summary>Thickness mode: the target average wall thickness Vf * tMax [mm].</summary>
+        public double TargetAverageThickness => VolumeFraction * MaxThickness;
+
+        /// <summary>Thickness mode: volume fractions at or below tMin/tMax leave no design freedom.</summary>
+        public double MinimumVolumeFraction => MinThickness / MaxThickness;
+
         public void Validate()
         {
-            if (VolumeFraction <= 0 || VolumeFraction > 1) throw new ArgumentException("Volume fraction must be in (0, 1].");
+            if (VolumeFraction < 0 || VolumeFraction > 1) throw new ArgumentException("Volume fraction must be in [0, 1].");
+            if (Mode == BesoMode.Void && VolumeFraction <= 0)
+                throw new ArgumentException("Void mode needs a volume fraction in (0, 1]: it removes material.");
             if (EvolutionRate <= 0) throw new ArgumentException("Evolution rate must be positive.");
             if (Mode == BesoMode.Thickness)
             {
                 if (MinThickness <= 0 || MaxThickness <= MinThickness)
                     throw new ArgumentException("Need 0 < tMin < tMax.");
+                // The target is an average thickness of Vf * tMax. If that is not above tMin, the
+                // only feasible design is a uniform tMin wall and there is nothing to optimise.
+                if (!KeepVolume && VolumeFraction <= MinimumVolumeFraction)
+                    throw new ArgumentException(
+                        $"Volume fraction {VolumeFraction:G3} means an average wall of {TargetAverageThickness:G3} mm, " +
+                        $"which is not thicker than tMin = {MinThickness:G3} mm, so every face would end at tMin. " +
+                        $"Use a volume fraction above tMin/tMax = {MinimumVolumeFraction:G3} (e.g. {0.5 * (MinimumVolumeFraction + 1):G2}).");
             }
         }
     }
@@ -82,6 +102,7 @@ namespace ClayBeso.Optimisation
         private double[] _previousSensitivity;
         private double _targetVolume;            // design-element volume at convergence
         private double _referenceVolume;
+        private double _designArea;
 
         public BesoSettings Settings { get; }
         public ShellModel Model => _model;
@@ -127,9 +148,27 @@ namespace ClayBeso.Optimisation
             }
 
             _referenceVolume = _design.Sum(e => _model.Elements[e].Area * ReferenceThickness(e));
-            _targetVolume = settings.VolumeFraction * _referenceVolume;
+            _designArea = _design.Sum(e => _model.Elements[e].Area);
+            if (settings.KeepVolume)
+            {
+                _targetVolume = DesignVolume;
+                double avg = _targetVolume / _designArea;
+                double span = settings.MaxThickness - settings.MinThickness;
+                if (avg <= settings.MinThickness + 1e-3 * span || avg >= settings.MaxThickness - 1e-3 * span)
+                    throw new ArgumentException(
+                        $"The starting wall (Shell Model thickness, average {avg:G3} mm) must lie strictly between " +
+                        $"tMin = {settings.MinThickness:G3} and tMax = {settings.MaxThickness:G3} mm, otherwise there is " +
+                        "nothing to redistribute.");
+            }
+            else
+            {
+                _targetVolume = settings.VolumeFraction * _referenceVolume;
+            }
             Scaling = BuildScaling();
         }
+
+        /// <summary>Thickness mode: average wall thickness the design converges to [mm].</summary>
+        public double TargetAverageThickness => _targetVolume / _designArea;
 
         private double ReferenceThickness(int e) =>
             Settings.Mode == BesoMode.Thickness ? Settings.MaxThickness : _model.Thickness[e];

@@ -13,7 +13,7 @@ namespace ClayBeso.GH.Components
     /// Runs the optimiser live: while Run is true it does a few iterations per solution and then
     /// schedules another solution, so the canvas stays responsive and you can watch it evolve.
     /// </summary>
-    public class BesoComponent : GH_Component
+    public class BesoComponent : LegendComponent
     {
         private BesoOptimizer _opt;
         private ShellModel _model;
@@ -23,8 +23,9 @@ namespace ClayBeso.GH.Components
         public BesoComponent()
             : base("Shell BESO", "BESO",
                 "Bi-directional evolutionary structural optimisation of a shell for minimum compliance " +
-                "(maximum stiffness) at a target material volume, including self-weight.\n" +
-                "Mode 0 = Thickness: graded wall thickness, no holes (always printable).\n" +
+                "(maximum stiffness), including self-weight.\n" +
+                "Mode 0 = Thickness: graded wall thickness, no holes (always printable). By default it keeps " +
+                "the clay volume of the Shell Model thickness and only redistributes it.\n" +
                 "Mode 1 = Void: classic BESO, removes faces to make perforations.\n" +
                 "Set Run to true (Boolean Toggle) to iterate. Set Reset to true to start over.",
                 Tab.Name, Tab.Optimise) { }
@@ -36,7 +37,9 @@ namespace ClayBeso.GH.Components
         {
             p.AddGenericParameter("Model", "Model", "Shell model.", GH_ParamAccess.item);
             p.AddIntegerParameter("Mode", "Mode", "0 = Thickness (graded wall), 1 = Void (perforations).", GH_ParamAccess.item, 0);
-            p.AddNumberParameter("Volume Fraction", "Vf", "Target volume. Thickness mode: fraction of (area × tMax). Void mode: fraction of the full wall.", GH_ParamAccess.item, 0.5);
+            p.AddNumberParameter("Volume Fraction", "Vf", "Thickness mode: 0 (default) = keep the clay volume of the Shell Model thickness and only redistribute it. " +
+                "A value > 0 sets a different target: average thickness = Vf × tMax (must be above tMin/tMax). " +
+                "Void mode: fraction of the full wall to keep (required).", GH_ParamAccess.item, 0.0);
             p.AddNumberParameter("Min Thickness", "tMin", "Thickness mode: thinnest printable wall [mm] (about 1.1x nozzle diameter).", GH_ParamAccess.item, 3.5);
             p.AddNumberParameter("Max Thickness", "tMax", "Thickness mode: thickest wall [mm] (widest bead you can extrude, about 2.3x nozzle).", GH_ParamAccess.item, 7.0);
             p.AddNumberParameter("Evolution Rate", "ER", "Max relative volume change per iteration.", GH_ParamAccess.item, 0.03);
@@ -46,6 +49,8 @@ namespace ClayBeso.GH.Components
             p.AddBooleanParameter("Reset", "Reset", "Restart from the initial design.", GH_ParamAccess.item, false);
             p.AddNumberParameter("Penalty", "p", "Void mode: stiffness penalty exponent.", GH_ParamAccess.item, 3.0);
             p.AddNumberParameter("Admission Ratio", "AR", "Void mode: max fraction of volume re-added per iteration.", GH_ParamAccess.item, 0.02);
+            p.AddIntervalParameter("Colour Range", "CR", "Fix the thickness colour scale [mm]. Empty = tMin to tMax in thickness mode, min-max in void mode.", GH_ParamAccess.item);
+            p.AddBooleanParameter("Legend", "Lg", "Draw a colour legend in the viewport.", GH_ParamAccess.item, true);
             for (int i = 1; i < p.ParamCount; i++) p[i].Optional = true;
         }
 
@@ -66,7 +71,7 @@ namespace ClayBeso.GH.Components
         {
             object modelObj = null;
             int mode = 0, maxIt = 100;
-            double vf = 0.5, tMin = 3.5, tMax = 7, er = 0.03, radius = 10, pen = 3, ar = 0.02;
+            double vf = 0.0, tMin = 3.5, tMax = 7, er = 0.03, radius = 10, pen = 3, ar = 0.02;
             bool run = false, reset = false;
             if (!da.GetData(0, ref modelObj)) return;
             da.GetData(1, ref mode);
@@ -80,6 +85,9 @@ namespace ClayBeso.GH.Components
             da.GetData(9, ref reset);
             da.GetData(10, ref pen);
             da.GetData(11, ref ar);
+            bool legend = true;
+            da.GetData(13, ref legend);
+            var range = ReadRange(da, 12, mode == 1 ? ((double, double)?)null : (tMin, tMax));
 
             var model = RhinoConvert.Unwrap<ShellModel>(modelObj);
             if (model == null) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Input is not a Shell Model."); return; }
@@ -117,6 +125,16 @@ namespace ClayBeso.GH.Components
                 }
             }
 
+            if (settings.Mode == BesoMode.Thickness)
+            {
+                double avg = _opt.TargetAverageThickness, span = tMax - tMin;
+                if (avg < tMin + 0.15 * span || avg > tMax - 0.15 * span)
+                    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning,
+                        $"Average wall {avg:G3} mm is close to {(avg < tMin + 0.15 * span ? "tMin" : "tMax")}: " +
+                        "most of the wall will sit at that limit. For more variation, set the Shell Model thickness " +
+                        "(or Vf) so the average is nearer the middle of tMin–tMax.");
+            }
+
             if (run && !reset && !_opt.Finished && _error == null)
             {
                 var sw = Stopwatch.StartNew();
@@ -134,17 +152,19 @@ namespace ClayBeso.GH.Components
             }
 
             if (_error != null) AddRuntimeMessage(GH_RuntimeMessageLevel.Error, _error);
-            Output(da);
+            Output(da, range, legend);
         }
 
-        private void Output(IGH_DataAccess da)
+        private void Output(IGH_DataAccess da, (double lo, double hi)? range, bool legend)
         {
             var thickness = _opt.EffectiveThickness();
             var solid = _opt.Solid();
             da.SetDataList(0, thickness);
             da.SetDataList(1, solid);
             if (_opt.Sensitivity != null) da.SetDataList(2, _opt.Sensitivity);
-            da.SetData(3, Preview.FaceColoured(_model.Mesh, thickness, _model.UnitScale, hide: solid.Select(s => !s).ToArray()));
+            da.SetData(3, Preview.FaceColoured(_model.Mesh, thickness, _model.UnitScale, out var used, range,
+                hide: solid.Select(s => !s).ToArray()));
+            SetLegend("Wall thickness", "mm", used, legend);
             da.SetDataList(4, _opt.ComplianceHistory);
             da.SetDataList(5, _opt.VolumeFractionHistory);
             da.SetData(6, _opt.Iteration);
@@ -156,7 +176,10 @@ namespace ClayBeso.GH.Components
             string c = _opt.ComplianceHistory.Count > 0 ? $"{_opt.ComplianceHistory.Last():G5} N·mm" : "-";
             da.SetData(8,
                 $"{_opt.Settings.Mode} mode, {state}\nIteration {_opt.Iteration}\n" +
-                $"Volume fraction {_opt.CurrentVolumeFraction:F3} (target {_opt.Settings.VolumeFraction:F3})\n" +
+                (_opt.Settings.KeepVolume
+                    ? $"Redistributing the starting clay: average wall {_opt.TargetAverageThickness:F2} mm\n"
+                    : $"Volume fraction {_opt.CurrentVolumeFraction:F3} (target {_opt.Settings.VolumeFraction:F3}" +
+                      (_opt.Settings.Mode == BesoMode.Thickness ? $" = average wall {_opt.TargetAverageThickness:F2} mm)\n" : ")\n")) +
                 $"Compliance {c}\nThickness {thickness.Where(t => t > 0).DefaultIfEmpty(0).Min():F2}-{thickness.Max():F2} mm");
         }
     }

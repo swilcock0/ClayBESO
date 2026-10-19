@@ -61,13 +61,17 @@ Surface/Brep ──Mesh (QuadRemesh or Mesh Surface)──► Shell Model ◄─
 1. **Mesh the mid-surface** of the wall (the surface halfway through the wall thickness).
    Aim for 2 000–20 000 faces with roughly even triangles/quads. Finer meshes are more
    accurate. The bottom edge should sit on the build plate (lowest Z).
-2. **Shell Model**: give the starting thickness (e.g. 6 mm). *Fix Base* clamps everything at
-   the lowest Z. Keep *Self-weight* on. Add point loads if needed (vectors in N).
+2. **Shell Model**: give the starting thickness (e.g. 5 mm). This is your **clay budget**: by
+   default BESO keeps this amount of clay and only moves it around. *Fix Base* clamps
+   everything at the lowest Z. Keep *Self-weight* on. Add point loads if needed (vectors in N).
 3. **Shell Analysis**: sanity-check displacements and stresses before optimising.
-4. **Shell BESO**: set **tMin / tMax** to the thinnest and thickest wall you can print, a
-   **volume fraction** (0.5 = half of the material of a tMax-thick wall), a **filter radius**
+4. **Shell BESO**: set **tMin / tMax** to the thinnest and thickest wall you can print. The
+   starting thickness must lie between them, ideally near the middle. Set a **filter radius**
    of about 2–3 mesh edge lengths, then set **Run** to true with a Boolean Toggle. Watch the
    preview evolve. *Converged* turns true when it is done. Toggle **Reset** to start again.
+   - Leave **Volume Fraction** at 0 to redistribute the same clay, which is the usual case.
+   - Set it above 0 only to change the amount of clay: the average wall becomes Vf × tMax.
+   - Void mode always needs a volume fraction, because it removes material.
 5. **Layer Heights**: set **hMin / hMax** from your nozzle (see the table below) and choose how
    thickness turns into layer height:
    - *Mapping 0, constant bead area*: flow and feed stay fixed and only the nozzle height
@@ -102,6 +106,25 @@ test print for your clay body:
 The component defaults are set for a 3 mm nozzle. Keep the **flow factor** range within what
 your extruder can follow quickly. Compare the min–max shown in the *Info* output against what
 you see in a test print.
+
+## Colours and legends
+
+Every component with a coloured preview draws a **legend** (colour bar with values) in the top
+left of the Rhino viewports. Turn it off with the *Legend* input, or hide the component's
+preview. When several are visible they sit side by side. Blue is low and red is high.
+
+The **Colour Range** input fixes the scale. Values outside the range get the end colours.
+Defaults when nothing is connected:
+
+| Component | Shows | Default range |
+|---|---|---|
+| Shell Analysis | von Mises stress [MPa] | min–max of the result |
+| Shell BESO | wall thickness [mm] | tMin–tMax (void mode: min–max) |
+| Layer Heights | target layer height [mm] | hMin–hMax |
+| Non-planar Layers | layer-height error [%] | symmetric about 0 |
+
+Fix the range to compare runs. With an automatic range, a tiny variation fills the whole
+blue-to-red scale.
 
 ## Units
 

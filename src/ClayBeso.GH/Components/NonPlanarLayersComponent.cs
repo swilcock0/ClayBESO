@@ -12,7 +12,7 @@ using Rhino.Geometry;
 
 namespace ClayBeso.GH.Components
 {
-    public class NonPlanarLayersComponent : GH_Component
+    public class NonPlanarLayersComponent : LegendComponent
     {
         public NonPlanarLayersComponent()
             : base("Non-planar Layers", "Layers",
@@ -35,6 +35,8 @@ namespace ClayBeso.GH.Components
             p.AddNumberParameter("Tolerance", "Tol", "Band (document units) at the bottom/top used to find the base and the rim.", GH_ParamAccess.item, 0.5);
             p.AddVectorParameter("Seam", "Seam", "Closed layers start at the point furthest in this direction.", GH_ParamAccess.item, new Vector3d(1, 0, 0));
             p.AddNumberParameter("Nominal Area", "A0", "Bead cross-section [mm²] that corresponds to 100% flow. 0 = median of the paths.", GH_ParamAccess.item, 0.0);
+            p.AddIntervalParameter("Colour Range", "CR", "Fix the height-error colour scale [%], e.g. -20 to 20. Empty = symmetric about 0.", GH_ParamAccess.item);
+            p.AddBooleanParameter("Legend", "Lg", "Draw a colour legend in the viewport.", GH_ParamAccess.item, true);
             for (int i = 2; i < p.ParamCount; i++) p[i].Optional = true;
         }
 
@@ -69,6 +71,8 @@ namespace ClayBeso.GH.Components
             da.GetData(5, ref tol);
             da.GetData(6, ref seam);
             da.GetData(7, ref nominal);
+            bool legend = true;
+            da.GetData(9, ref legend);
 
             var model = RhinoConvert.Unwrap<ShellModel>(modelObj);
             if (model == null) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Input is not a Shell Model."); return; }
@@ -127,7 +131,11 @@ namespace ClayBeso.GH.Components
                 da.SetDataTree(3, wd);
                 da.SetDataList(4, field.Phi);
                 da.SetData(5, field.LayerCount);
-                da.SetData(6, Preview.FaceColoured(mesh, err, s));
+                var errPct = err.Select(e => 100 * e).ToArray();
+                double worst = Math.Max(1.0, errPct.Where(e => !double.IsNaN(e)).Select(Math.Abs).DefaultIfEmpty(0).Max());
+                var range = ReadRange(da, 8, (-worst, worst));
+                da.SetData(6, Preview.FaceColoured(mesh, errPct, s, out var usedRange, range));
+                SetLegend("Layer height error", "% (realised vs target)", usedRange, legend);
                 da.SetDataTree(8, ba);
                 da.SetDataTree(9, ff);
                 string flow = allAreas.Length > 0

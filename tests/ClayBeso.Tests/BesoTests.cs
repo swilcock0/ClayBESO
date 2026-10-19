@@ -36,7 +36,7 @@ public class BesoTests
     public void SensitivityMatchesFiniteDifference(BesoMode mode)
     {
         var model = VaseModel(12, 8);
-        var settings = new BesoSettings { Mode = mode, MinThickness = 2, MaxThickness = 10, FilterRadius = 0 };
+        var settings = new BesoSettings { Mode = mode, VolumeFraction = 0.5, MinThickness = 2, MaxThickness = 10, FilterRadius = 0 };
         var opt = new BesoOptimizer(model, settings);
         // Use a non-uniform design so the check is not trivial.
         var rng = new Random(3);
@@ -101,6 +101,85 @@ public class BesoTests
         Assert.InRange(opt.CurrentVolumeFraction, 0.599, 0.601);
         Assert.True(final.Compliance < uniform.Compliance, "optimised design should beat the uniform wall");
         Assert.All(opt.Design, t => Assert.InRange(t, 3 - 1e-9, 10 + 1e-9));
+    }
+
+    /// <summary>
+    /// Pure self-weight: many elements have negative sensitivity (they weigh more than they help).
+    /// The volume target must still be met and material should move towards the base,
+    /// which carries the weight of everything above it.
+    /// </summary>
+    [Fact]
+    public void SelfWeightOnlyKeepsVolumeAndGradesTowardsBase()
+    {
+        var model = VaseModel(lateral: 0);
+        var opt = new BesoOptimizer(model, new BesoSettings
+        {
+            Mode = BesoMode.Thickness, VolumeFraction = 0.6, MinThickness = 3.5, MaxThickness = 7,
+            FilterRadius = 25, MaxIterations = 100,
+        });
+        while (opt.Step()) { }
+
+        var mesh = model.Mesh;
+        double zMax = mesh.Vertices.Max(p => p.Z);
+        var lower = Enumerable.Range(0, mesh.FaceCount).Where(f => mesh.FaceCentroid(f).Z < 0.3 * zMax).Select(f => opt.Design[f]).ToArray();
+        var upper = Enumerable.Range(0, mesh.FaceCount).Where(f => mesh.FaceCentroid(f).Z > 0.7 * zMax).Select(f => opt.Design[f]).ToArray();
+        var negative = opt.RawSensitivity(opt.LastResult).Count(a => a < 0);
+        _out.WriteLine($"iterations {opt.Iteration}, converged {opt.Converged}, vf {opt.CurrentVolumeFraction:F4}, " +
+                       $"negative sensitivities {negative}/{mesh.FaceCount}");
+        _out.WriteLine($"mean t lower third {lower.Average():F2}, upper third {upper.Average():F2}, range {opt.Design.Min():F2}-{opt.Design.Max():F2}");
+
+        Assert.InRange(opt.CurrentVolumeFraction, 0.595, 0.605);
+        Assert.True(lower.Average() > upper.Average() + 0.5, "base should end up thicker than the top");
+    }
+
+    /// <summary>Default thickness mode: keep the starting clay volume and only redistribute it.</summary>
+    [Fact]
+    public void DefaultThicknessModeRedistributesWithoutReducingVolume()
+    {
+        var model = VaseModel(); // 6 mm uniform wall
+        var opt = new BesoOptimizer(model, new BesoSettings { MinThickness = 3.5, MaxThickness = 9, FilterRadius = 25 });
+        Assert.True(opt.Settings.KeepVolume);
+        double v0 = opt.DesignVolume;
+        var uniform = opt.Solver.Solve(opt.Scaling).Compliance;
+
+        while (opt.Step())
+            Assert.Equal(v0, opt.DesignVolume, 6 - (int)Math.Log10(v0)); // ~6 significant digits
+        var final = opt.Solver.Solve(opt.Scaling).Compliance;
+
+        _out.WriteLine($"iterations {opt.Iteration}, converged {opt.Converged}, average t {opt.TargetAverageThickness:F3} mm, " +
+                       $"range {opt.Design.Min():F2}-{opt.Design.Max():F2}, compliance {uniform:E3} -> {final:E3}");
+        Assert.Equal(6.0, opt.TargetAverageThickness, 9);
+        Assert.True(opt.Design.Max() - opt.Design.Min() > 2, "thickness should vary");
+        Assert.True(final < 0.8 * uniform, "same clay, stiffer vase");
+    }
+
+    [Theory]
+    [InlineData(3.5)] // starting wall at tMin: nothing to redistribute
+    [InlineData(12)]  // above tMax
+    public void KeepVolumeRejectsStartingWallOutsideRange(double t)
+    {
+        var mesh = TestMeshes.Vase(12, 8);
+        var model = VaseModel(12, 8);
+        var m2 = new Fem.ShellModel(mesh, model.Material, new[] { t }, model.Fixed, model.FixedLoads, new Vec3(0, 0, -1));
+        var ex = Assert.Throws<ArgumentException>(() =>
+            new BesoOptimizer(m2, new BesoSettings { MinThickness = 3.5, MaxThickness = 7 }));
+        Assert.Contains("strictly between", ex.Message);
+    }
+
+    [Fact]
+    public void VoidModeNeedsAVolumeFraction()
+    {
+        Assert.Throws<ArgumentException>(() => new BesoSettings { Mode = BesoMode.Void }.Validate());
+    }
+
+    [Theory]
+    [InlineData(0.5)]  // average 3.5 mm == tMin: nothing to optimise
+    [InlineData(0.4)]  // below tMin: infeasible
+    public void ThicknessModeRejectsVolumeFractionWithoutFreedom(double vf)
+    {
+        var s = new BesoSettings { Mode = BesoMode.Thickness, VolumeFraction = vf, MinThickness = 3.5, MaxThickness = 7 };
+        var ex = Assert.Throws<ArgumentException>(() => s.Validate());
+        Assert.Contains("tMin/tMax", ex.Message);
     }
 
     [Fact]

@@ -36,7 +36,8 @@ namespace ClayBeso.GH.Common
                 (int)(a.B + f * (b.B - a.B)));
         }
 
-        private static (double lo, double hi) Range(IEnumerable<double> values)
+        /// <summary>Min-max of the finite values (padded if they are all equal).</summary>
+        public static (double lo, double hi) AutoRange(IEnumerable<double> values)
         {
             var finite = values.Where(v => !double.IsNaN(v) && !double.IsInfinity(v)).ToArray();
             if (finite.Length == 0) return (0, 1);
@@ -44,12 +45,16 @@ namespace ClayBeso.GH.Common
             return hi - lo < 1e-12 ? (lo - 0.5, hi + 0.5) : (lo, hi);
         }
 
-        /// <summary>Unwelded mesh with one flat colour per face.</summary>
+        /// <summary>
+        /// Unwelded mesh with one flat colour per face. <paramref name="range"/> fixes the colour
+        /// scale (null = data min-max). The range actually used is returned for the legend.
+        /// </summary>
         public static Mesh FaceColoured(
-            TriMesh mesh, IList<double> faceValues, double scale,
+            TriMesh mesh, IList<double> faceValues, double scale, out (double lo, double hi) used,
+            (double lo, double hi)? range = null,
             Func<int, Vec3> displacement = null, double dispScale = 0, IList<bool> hide = null)
         {
-            var (lo, hi) = Range(faceValues);
+            var (lo, hi) = used = range ?? AutoRange(hide == null ? faceValues : faceValues.Where((v, i) => !hide[i]));
             var m = new Mesh();
             for (int f = 0; f < mesh.FaceCount; f++)
             {
@@ -69,10 +74,12 @@ namespace ClayBeso.GH.Common
             return m;
         }
 
-        /// <summary>Welded mesh with smooth per-vertex colours.</summary>
-        public static Mesh VertexColoured(TriMesh mesh, IList<double> vertexValues, double scale)
+        /// <summary>Welded mesh with smooth per-vertex colours (see <see cref="FaceColoured"/> for the range).</summary>
+        public static Mesh VertexColoured(
+            TriMesh mesh, IList<double> vertexValues, double scale, out (double lo, double hi) used,
+            (double lo, double hi)? range = null)
         {
-            var (lo, hi) = Range(vertexValues);
+            var (lo, hi) = used = range ?? AutoRange(vertexValues);
             var m = RhinoConvert.ToRhino(mesh, scale);
             foreach (var v in vertexValues) m.VertexColors.Add(ColourAt((v - lo) / (hi - lo)));
             return m;

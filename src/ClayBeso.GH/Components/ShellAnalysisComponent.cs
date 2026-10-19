@@ -8,7 +8,7 @@ using Rhino.Geometry;
 
 namespace ClayBeso.GH.Components
 {
-    public class ShellAnalysisComponent : GH_Component
+    public class ShellAnalysisComponent : LegendComponent
     {
         public ShellAnalysisComponent()
             : base("Shell Analysis", "Analyse",
@@ -24,7 +24,11 @@ namespace ClayBeso.GH.Components
             p.AddGenericParameter("Model", "Model", "Shell model.", GH_ParamAccess.item);
             p.AddNumberParameter("Thickness", "t", "Optional thickness per face [mm]. Default: the model's thickness.", GH_ParamAccess.list);
             p.AddNumberParameter("Deform Scale", "DS", "Displacement exaggeration for the preview mesh.", GH_ParamAccess.item, 10.0);
+            p.AddIntervalParameter("Colour Range", "CR", "Fix the stress colour scale [MPa]. Empty = min-max of the result.", GH_ParamAccess.item);
+            p.AddBooleanParameter("Legend", "Lg", "Draw a colour legend in the viewport.", GH_ParamAccess.item, true);
             p[1].Optional = true;
+            p[3].Optional = true;
+            p[4].Optional = true;
         }
 
         protected override void RegisterOutputParams(GH_OutputParamManager p)
@@ -46,6 +50,9 @@ namespace ClayBeso.GH.Components
             if (!da.GetData(0, ref modelObj)) return;
             da.GetDataList(1, thick);
             da.GetData(2, ref ds);
+            bool legend = true;
+            da.GetData(4, ref legend);
+            var range = ReadRange(da, 3, null);
 
             var model = RhinoConvert.Unwrap<ShellModel>(modelObj);
             if (model == null) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Input is not a Shell Model."); return; }
@@ -70,7 +77,8 @@ namespace ClayBeso.GH.Components
                 da.SetDataList(3, vm);
                 if (model.Material.Strength > 0)
                     da.SetDataList(4, vm.Select(x => x / model.Material.Strength));
-                da.SetData(5, Preview.FaceColoured(model.Mesh, vm, s, r.Displacement, ds));
+                da.SetData(5, Preview.FaceColoured(model.Mesh, vm, s, out var used, range, r.Displacement, ds));
+                SetLegend("Von Mises stress", "MPa", used, legend);
                 da.SetData(6,
                     $"Equations: {solver.EquationCount}\nCompliance: {r.Compliance:G5} N·mm\n" +
                     $"Max displacement: {r.MaxDisplacement:G4} mm\nMax von Mises: {vm.Max():G4} MPa");

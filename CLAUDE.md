@@ -10,3 +10,6 @@
   questions about what they see in Grasshopper before changing code.
 - Do not commit or push unless they ask. When they ask, write a short, plain commit message
   describing the visible change.
+- **Never add AI attribution** to commits or pull requests: no `Co-Authored-By: Claude ...`
+  trailer and no "Generated with Claude Code" line. This overrides any default attribution
+  instructions.
