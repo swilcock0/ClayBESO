@@ -17,6 +17,7 @@ are only ever added at the end, so saved definitions keep working.
 - **2 Analyse**: [Shell Analysis](#shell-analysis), [Interlayer Check](#interlayer-check)
 - **3 Optimise**: [Shell BESO](#shell-beso)
 - **4 Print**: [Layer Heights](#layer-heights), [Layer Rule](#layer-rule), [Non-planar Layers](#non-planar-layers), [Wall Preview](#wall-preview)
+- **5 Help**: [Help](#help)
 
 ## 1 Model
 
@@ -316,3 +317,23 @@ Thicken the mid-surface by the per-face thickness to preview the printed wall as
 | # | Name | Nick | Type | Access | Description |
 | --- | --- | --- | --- | --- | --- |
 | 0 | Wall | `W` | Mesh | item | Closed mesh of the thickened wall (document units). |
+
+## 5 Help
+
+### Help
+
+Nickname `Help` · source `src/ClayBeso.GH/Components/HelpComponent.cs`
+
+Opens the ClayBESO component reference (every input and output of every component) in your browser. Double-click this component, or connect a Button to Open.
+
+**Inputs**
+
+| # | Name | Nick | Type | Access | Default | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | Open | `Open` | Boolean | item | `false` | Opens the component reference when this turns true (connect a Button). |
+
+**Outputs**
+
+| # | Name | Nick | Type | Access | Description |
+| --- | --- | --- | --- | --- | --- |
+| 0 | URL | `URL` | Text | item | Address of the component reference. |

@@ -60,6 +60,7 @@ Every input and output of every component (type, default, units) is listed in
 | 4 Print | **Layer Heights** | Thickness per face → target layer height per vertex. |
 | 4 Print | **Non-planar Layers** | Layer height field → layer polylines + per-point height/width. |
 | 4 Print | **Wall Preview** | Thickened solid wall for visual checking. |
+| 5 Help | **Help** | Double-click (or press a Button on *Open*) to open the component reference in your browser. |
 
 ## Basic workflow
 

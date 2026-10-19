@@ -37,5 +37,6 @@ namespace ClayBeso.GH
         public const string Analyse = "2 Analyse";
         public const string Optimise = "3 Optimise";
         public const string Print = "4 Print";
+        public const string Help = "5 Help";
     }
 }
