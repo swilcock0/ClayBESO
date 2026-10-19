@@ -91,5 +91,22 @@ namespace ClayBeso.Optimisation
             }
             return r;
         }
+
+        /// <summary>
+        /// Transpose: r_j = sum_i W_ij v_i. Used for the chain rule when the filter is applied to the
+        /// design itself (density filter): dC/dx = W^T dC/dt.
+        /// </summary>
+        public double[] ApplyTranspose(double[] values)
+        {
+            int m = _start.Length - 1;
+            var r = new double[m];
+            for (int i = 0; i < m; i++)
+            {
+                double v = values[i];
+                if (v == 0) continue;
+                for (int k = _start[i]; k < _start[i + 1]; k++) r[_index[k]] += _weight[k] * v;
+            }
+            return r;
+        }
     }
 }

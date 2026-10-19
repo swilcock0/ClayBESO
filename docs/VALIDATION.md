@@ -10,12 +10,12 @@ numbers feed the validation tests (sections 5–7).
 | # | Assumption in the plugin | Plugin input or output it affects | Tested in |
 | --- | --- | --- | --- |
 | 1 | Green clay is linear elastic with known E, ν and density | Clay Material (E, ν, ρ) | §2 |
-| 2 | One clay strength f describes failure | Clay Material (Strength), Interlayer Check (f) | §2 |
-| 3 | A bead of width w and height h has a stadium cross-section, and flow per mm of path = its area | Layer Heights, Non-planar Layers (Bead Area, Flow Factor) | §3 |
-| 4 | Layers bond over a strip c = (w − h)/w wide, with efficiency η | Interlayer Check (η, cMin); BESO interlayer stiffness | §4 |
+| 2 | One clay strength f describes failure | Clay Material (Strength), Print Check (f) | §2 |
+| 3 | A bead of width w and height h has a stadium cross-section, and flow per mm of path = its area | Print Layers (Bead Area, Flow Factor) | §3 |
+| 4 | Layers bond over a strip c = (w − h)/w wide, with efficiency η | Print Check (η); BESO interlayer stiffness | §4 |
 | 5 | The shell FE model predicts deflection and stress of the finished shell | Shell Analysis | §5 |
 | 6 | A BESO-graded wall is stiffer than a uniform wall with the same clay | Shell BESO | §6 |
-| 7 | Printed non-planar layers follow the realised layer heights | Non-planar Layers (Realised Height) | §7 |
+| 7 | Printed non-planar layers follow the realised layer heights | Print Layers (Realised Height) | §7 |
 
 Out of scope here: drying and firing shrinkage, creep, and stability during printing (the plugin
 analyses only the finished geometry). Buckling of wet walls is a known gap; §5 records collapse
@@ -37,7 +37,7 @@ time since extrusion.
 | Density ρ [kg/m³] | Mass of a known volume | Filled cylinder mould, 3 per batch | Clay Material ρ |
 | Young's modulus E [MPa] | Unconfined compression (ASTM D2166), about 1 %/min | Cylinders of the printing batch, height = 2 × diameter (e.g. 38 × 76 mm) | Clay Material E |
 | Poisson's ratio ν | Lateral strain in the same test, by DIC or video | Same cylinders | Clay Material ν |
-| Strength f [MPa] | Peak stress, or the stress at 15 % strain if there is no peak | Same cylinders | Clay Material Strength; Interlayer Check f |
+| Strength f [MPa] | Peak stress, or the stress at 15 % strain if there is no peak | Same cylinders | Clay Material Strength; Print Check f |
 | Quick batch check | Pocket penetrometer or vane | 5 readings per batch | Correlated with E, for batches without a full test |
 
 - **E** = secant modulus to 1 % strain; also report the initial tangent.
@@ -69,7 +69,7 @@ into machine units.
    Area into G-code values.
 3. **Response to flow changes.** Print one wall with a step change in F halfway along, and one with
    F rising linearly. Measure the length over which the width settles. This sets how sharply the
-   thickness field can vary along a path (the smoothing passes in Layer Heights). Also measure
+   thickness field can vary along a path (the Smoothing input of Print Layers). Also measure
    the **lead**: the path length by which a flow change must be sent early so the width changes at
    the right place. Vele & Achten (2023) found ram extruders need the flow changed "slightly in
    advance", and combined flow and speed changes for very low or very tall layers.
@@ -104,7 +104,7 @@ still is.
 3. **Bond in shear.** Direct shear on two-layer specimens, or on a single interface of a short
    printed wall.
 4. **Bearing.** Compress short printed columns (10 layers) and moulded cylinders of the same
-   section. This checks the compression term f/c used in the Interlayer Check.
+   section. This checks the compression term f/c used in Print Check.
 
 Compute η from the across-layer failure stress on the full section, σ_gross:
 
@@ -118,7 +118,7 @@ time after printing as in §2, and fired specimens for §5.
 Pass criteria:
 
 - Measured contact width within ±20 % of w − h, or a fitted law that replaces it.
-- η has a coefficient of variation ≤ 20 % across all h/w. The mean η becomes the Interlayer Check
+- η has a coefficient of variation ≤ 20 % across all h/w. The mean η becomes the Print Check
   default and is used in BESO's interlayer stiffness.
 - Across-layer strength below along-layer strength, which confirms the anisotropy that BESO's
   interlayer stiffness models.
@@ -197,7 +197,7 @@ design, so the same test also validates that design.
    compare with the BESO thickness there.
 3. **Tilt limit.** Print rings whose layer height varies around the loop, from 1:1 up to 1:3
    (min:max) in steps. Record the ratio at which beads slip, drag or separate. That ratio becomes
-   a warning threshold in Non-planar Layers.
+   a warning threshold in Print Layers.
 4. **Methods.** Print the same vase with the Conforming, Eikonal and Force-aligned methods. Compare
    rim quality, the partial top layers and how far the force-aligned layers depart from planar.
 5. **Overhang series** (after Vele & Achten 2023). Print vase-like pieces with symmetric overhangs
@@ -205,11 +205,11 @@ design, so the same test also validates that design.
    layer count and clay). Record the overhang at which layers start to slump and the one at which
    the print collapses, for each slicing. Their clay on a 4 mm delta printer started deforming at
    45° and failed above 55° planar, and reached 70–80° non-planar. The planar limit becomes the
-   **Max Overhang** default in Non-planar Layers, and the bead offset ratio at failure the
+   **Max Overhang** default in Print Layers, and the bead offset ratio at failure the
    overhang-ratio warning. Watch for their two non-planar failure modes: nozzle scraping on steep
    layer tilts (3-axis printer), and tipping from one-sided heavy top layers.
-6. **Print stages.** For the reference vase and the overhang pieces, compare the stage the Print
-   Stages component predicts as worst with the height at which deformation was first seen.
+6. **Print stages.** For the reference vase and the overhang pieces, compare the worst print stage that
+   Print Check predicts with the height at which deformation was first seen.
 
 Pass criteria:
 
@@ -217,7 +217,7 @@ Pass criteria:
 - Fired wall thickness within ±15 % of the BESO thickness (allowing for the measured firing
   shrinkage).
 - No collapse or bead separation within the tilt limit found in test 3.
-- The Non-planar Layers overhang warnings flag every piece in test 5 that slumped, and no more than
+- The Print Layers overhang warnings flag every piece in test 5 that slumped, and no more than
   one size class beyond it.
 
 ## 8. Test sequence, equipment and records
@@ -251,7 +251,7 @@ model that has passed §5.
 | 4 | Contact cuts, bending, shear, bearing | 5 per h/w × 4 × 4 tests | Saw, camera, UTM | η, contact law |
 | 5 | Rim load, self-weight scans, collapse height | 3 per shape × 3 shapes | UTM or load frame, transducer, strain gauges, 3D scanner | Shell Analysis |
 | 6 | Uniform vs BESO pairs | 3 per variant × 3 | As §5 | Shell BESO |
-| 7 | Layer scans, cuts, tilt rings | 1 vase × 2 methods + rings | 3D scanner, saw | Non-planar Layers |
+| 7 | Layer scans, cuts, tilt rings | 1 vase × 2 methods + rings | 3D scanner, saw | Print Layers |
 
 **Record with every specimen:** clay batch and water content; room temperature and humidity; time
 from extrusion to test; nozzle, feed, layer height and flow factor; the ClayBESO version (git tag)

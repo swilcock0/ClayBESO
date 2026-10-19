@@ -38,7 +38,7 @@ namespace ClayBeso.GH.Components
         protected override void RegisterOutputParams(GH_OutputParamManager p)
         {
             p.AddTextParameter("URL", "URL", "Address of the component reference.", GH_ParamAccess.item);
-            p.AddTextParameter("Version", "V", "Installed ClayBESO release version (e.g. 0.3.0).", GH_ParamAccess.item);
+            p.AddTextParameter("Version", "Version", "Installed ClayBESO release version (e.g. 0.3.0).", GH_ParamAccess.item);
         }
 
         protected override void SolveInstance(IGH_DataAccess da)

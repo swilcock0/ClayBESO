@@ -11,6 +11,7 @@ namespace ClayBeso.GH.Components
     {
         public LayerHeightComponent()
             : base("Layer Heights", "LayerH",
+                "Legacy: replaced by Print Layers, which does this with fewer connections. Kept so older definitions still open.\n" +
                 "Turn a wall-thickness field (e.g. from Shell BESO) into a target layer height per vertex.\n" +
                 "Mapping 3 (default) = proportional: thinnest wall gets hMin, thickest gets hMax. More demand " +
                 "means a wider bead AND a taller layer, with the flow raised to supply both (Flow Factor " +
@@ -21,6 +22,9 @@ namespace ClayBeso.GH.Components
                 Tab.Name, Tab.Print) { }
 
         public override Guid ComponentGuid => new Guid("e2b5a7c6-95f8-4f42-8da5-4a6f1b3e8c05");
+        public override GH_Exposure Exposure => GH_Exposure.hidden;
+
+        protected override IEnumerable<Dropdown> Dropdowns => new[] { new Dropdown("Mapping", 3, Modes.Mapping) };
         protected override System.Drawing.Bitmap Icon => Icons.Get("LayerHeights");
 
         protected override void RegisterInputParams(GH_InputParamManager p)

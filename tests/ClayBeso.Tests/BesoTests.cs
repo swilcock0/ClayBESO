@@ -220,7 +220,7 @@ public class BesoTests
         var solver = new ShellSolver(model);
         for (int i = 0; i < opt.DesignHistory.Count; i++)
         {
-            double c = solver.Solve(ElementScaling.FromThickness(opt.DesignHistory[i])).Compliance;
+            double c = solver.Solve(ElementScaling.FromThickness(opt.EffectiveThickness(opt.DesignHistory[i]))).Compliance;
             Assert.Equal(opt.ComplianceHistory[i], c, 6);
         }
     }

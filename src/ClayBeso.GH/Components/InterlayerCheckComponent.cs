@@ -13,6 +13,7 @@ namespace ClayBeso.GH.Components
     {
         public InterlayerCheckComponent()
             : base("Interlayer Check", "Interlayer",
+                "Legacy: replaced by Print Check, which does this with fewer connections. Kept so older definitions still open.\n" +
                 "Check the bond between printed layers. Stresses are split into along-layer and across-layer " +
                 "using the real (non-planar) layer directions. Each interface carries them only through its " +
                 "bonded strip, c = (w - h)/w of the wall (bead width w = wall thickness, h = layer height), so " +
@@ -23,7 +24,7 @@ namespace ClayBeso.GH.Components
 
         public override Guid ComponentGuid => new Guid("5c2e8f1a-7d34-4b9e-a6c1-2f8e0d4b7a19");
         protected override System.Drawing.Bitmap Icon => Icons.Get("InterlayerCheck");
-        public override GH_Exposure Exposure => GH_Exposure.secondary;
+        public override GH_Exposure Exposure => GH_Exposure.hidden;
 
         protected override void RegisterInputParams(GH_InputParamManager p)
         {

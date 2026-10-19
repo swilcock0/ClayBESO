@@ -19,14 +19,14 @@ namespace ClayBeso.GH.Components
 
         protected override void RegisterInputParams(GH_InputParamManager p)
         {
-            p.AddGenericParameter("Model", "Model", "Shell model.", GH_ParamAccess.item);
-            p.AddNumberParameter("Thickness", "t", "Wall thickness per face [mm]. Default: the model's thickness.", GH_ParamAccess.list);
+            p.AddGenericParameter("Model", "Model", "Shell Model, or the Design output of Shell BESO.", GH_ParamAccess.item);
+            p.AddNumberParameter("Thickness", "Thickness", "Wall thickness per face [mm]. Default: the design's or model's thickness.", GH_ParamAccess.list);
             p[1].Optional = true;
         }
 
         protected override void RegisterOutputParams(GH_OutputParamManager p)
         {
-            p.AddMeshParameter("Wall", "W", "Closed mesh of the thickened wall (document units).", GH_ParamAccess.item);
+            p.AddMeshParameter("Wall", "Wall", "Closed mesh of the thickened wall (document units).", GH_ParamAccess.item);
         }
 
         protected override void SolveInstance(IGH_DataAccess da)
@@ -35,12 +35,11 @@ namespace ClayBeso.GH.Components
             var t = new List<double>();
             if (!da.GetData(0, ref modelObj)) return;
             da.GetDataList(1, t);
-            var model = RhinoConvert.Unwrap<ShellModel>(modelObj);
-            if (model == null) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Input is not a Shell Model."); return; }
             try
             {
-                var tf = t.Count > 0 ? RhinoConvert.Expand(t, model.ElementCount, "Thickness") : new List<double>(model.Thickness);
-                da.SetData(0, Preview.Thicken(model.Mesh, model.Mesh.FaceToVertex(tf), model.UnitScale));
+                var design = PrintLayersComponent.ToDesign(modelObj, t);
+                var model = design.Model;
+                da.SetData(0, Preview.Thicken(model.Mesh, model.Mesh.FaceToVertex(design.Thickness), model.UnitScale));
             }
             catch (Exception ex)
             {

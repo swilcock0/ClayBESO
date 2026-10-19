@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
@@ -27,47 +28,55 @@ namespace ClayBeso.GH.Components
                 "Mode 0 = Thickness: graded wall thickness, no holes (always printable). By default it keeps " +
                 "the clay volume of the Shell Model thickness and only redistributes it.\n" +
                 "Mode 1 = Void: classic BESO, removes faces to make perforations.\n" +
-                "Set Run to true (Boolean Toggle) to iterate. Set Reset to true to start over.",
+                "Set Run to true (Boolean Toggle) to iterate. Set Reset to true to start over.\n" +
+                "Connect the Design output to Print Layers (and to Shell Analysis to analyse the result).",
                 Tab.Name, Tab.Optimise) { }
 
-        public override Guid ComponentGuid => new Guid("d1a4f6b5-84e7-4e31-9c94-3f5e0a2d7b04");
+        /// <summary>For the legacy version, which only differs in the order of its inputs and outputs.</summary>
+        protected BesoComponent(string name, string nickname, string description)
+            : base(name, nickname, description, Tab.Name, Tab.Optimise) { }
+
+        public override Guid ComponentGuid => new Guid("0cfa1b98-835b-45e0-b75c-c575ce010dab");
+
+        protected override IEnumerable<Dropdown> Dropdowns => new[] { new Dropdown("Mode", 0, Modes.BesoMode) };
         protected override System.Drawing.Bitmap Icon => Icons.Get("ShellBeso");
 
         protected override void RegisterInputParams(GH_InputParamManager p)
         {
             p.AddGenericParameter("Model", "Model", "Shell model.", GH_ParamAccess.item);
-            p.AddIntegerParameter("Mode", "Mode", "0 = Thickness (graded wall), 1 = Void (perforations).", GH_ParamAccess.item, 0);
+            p.AddBooleanParameter("Run", "Run", "Iterate while true (connect a Boolean Toggle).", GH_ParamAccess.item, false);
+            p.AddBooleanParameter("Reset", "Reset", "Restart from the initial design.", GH_ParamAccess.item, false);
+            p.AddIntegerParameter("Mode", "Mode", "0 = Thickness (graded wall), 1 = Void (perforations). A dropdown appears when you place the component.", GH_ParamAccess.item, 0);
+            p.AddNumberParameter("Min Thickness", "Min Thickness", "Thickness mode: thinnest printable wall [mm] (about 1.1x nozzle diameter).", GH_ParamAccess.item, 3.5);
+            p.AddNumberParameter("Max Thickness", "Max Thickness", "Thickness mode: thickest wall [mm] (widest bead you can extrude, about 2.3x nozzle).", GH_ParamAccess.item, 7.0);
+            p.AddNumberParameter("Filter Radius", "Filter Radius", "Filter radius in document units. In thickness mode the wall thickness is averaged over this radius, so it sets how wide the transitions between thin and thick wall are (no stair-steps between faces). Use at least 2-3× the mesh edge length; larger = smoother, more gradual walls.", GH_ParamAccess.item, 10.0);
+            p.AddGenericParameter("Layer Rule", "Layer Rule", "Optional Layer Rule. When connected, the wall is weaker across its layers: across-layer stiffness × κ = η·(t − h)/t, with h from the rule. The rule travels on in the Design output.", GH_ParamAccess.item);
+            p.AddNumberParameter("Bond Efficiency", "η", "With a Layer Rule: interface efficiency 0-1 (calibrate from tests, see docs/VALIDATION.md §4). 1 = only the contact geometry weakens the wall.", GH_ParamAccess.item, 1.0);
             p.AddNumberParameter("Volume Fraction", "Vf", "Thickness mode: 0 (default) = keep the clay volume of the Shell Model thickness and only redistribute it. " +
                 "A value > 0 sets a different target: average thickness = Vf × tMax (must be above tMin/tMax). " +
                 "Void mode: fraction of the full wall to keep (required).", GH_ParamAccess.item, 0.0);
-            p.AddNumberParameter("Min Thickness", "tMin", "Thickness mode: thinnest printable wall [mm] (about 1.1x nozzle diameter).", GH_ParamAccess.item, 3.5);
-            p.AddNumberParameter("Max Thickness", "tMax", "Thickness mode: thickest wall [mm] (widest bead you can extrude, about 2.3x nozzle).", GH_ParamAccess.item, 7.0);
-            p.AddNumberParameter("Evolution Rate", "ER", "Max relative volume change per iteration.", GH_ParamAccess.item, 0.03);
-            p.AddNumberParameter("Filter Radius", "R", "Sensitivity filter radius in document units. Use 2-3× the mesh edge length.", GH_ParamAccess.item, 10.0);
+            p.AddNumberParameter("Playback", "Playback", "Show the design at a point of the run: 0 = first iteration, 1 = final (default). Connect a 0-1 slider to scrub through the optimisation. Thickness, Design and the preview follow it; it never restarts the run.", GH_ParamAccess.item, 1.0);
             p.AddIntegerParameter("Max Iterations", "N", "Iteration limit.", GH_ParamAccess.item, 100);
-            p.AddBooleanParameter("Run", "Run", "Iterate while true.", GH_ParamAccess.item, false);
-            p.AddBooleanParameter("Reset", "Reset", "Restart from the initial design.", GH_ParamAccess.item, false);
+            p.AddNumberParameter("Evolution Rate", "ER", "Max relative volume change per iteration.", GH_ParamAccess.item, 0.03);
             p.AddNumberParameter("Penalty", "p", "Void mode: stiffness penalty exponent.", GH_ParamAccess.item, 3.0);
             p.AddNumberParameter("Admission Ratio", "AR", "Void mode: max fraction of volume re-added per iteration.", GH_ParamAccess.item, 0.02);
             p.AddIntervalParameter("Colour Range", "CR", "Fix the thickness colour scale [mm]. Empty = tMin to tMax in thickness mode, min-max in void mode.", GH_ParamAccess.item);
             p.AddBooleanParameter("Legend", "Lg", "Draw a colour legend in the viewport.", GH_ParamAccess.item, true);
-            p.AddNumberParameter("Playback", "Pb", "Show the design at a point of the run: 0 = first iteration, 1 = final (default). Connect a 0-1 slider to scrub through the optimisation. Thickness, Solid and the preview follow it; it never restarts the run.", GH_ParamAccess.item, 1.0);
-            p.AddGenericParameter("Layer Rule", "Rule", "Optional Layer Rule (from the Layer Rule component). When connected, the wall is weaker across its layers: across-layer stiffness × κ = η·(t − h)/t, with h from the rule. Use the same rule on Layer Heights.", GH_ParamAccess.item);
-            p.AddNumberParameter("Bond Efficiency", "η", "With a Layer Rule: interface efficiency 0-1 (calibrate from tests, see docs/VALIDATION.md §4). 1 = only the contact geometry weakens the wall.", GH_ParamAccess.item, 1.0);
             for (int i = 1; i < p.ParamCount; i++) p[i].Optional = true;
         }
 
         protected override void RegisterOutputParams(GH_OutputParamManager p)
         {
-            p.AddNumberParameter("Thickness", "t", "Wall thickness per face [mm] (0 for removed faces in void mode).", GH_ParamAccess.list);
-            p.AddBooleanParameter("Solid", "S", "Per face: true if material is kept.", GH_ParamAccess.list);
-            p.AddNumberParameter("Sensitivity", "α", "Filtered sensitivity per face (higher = more useful material).", GH_ParamAccess.list);
-            p.AddMeshParameter("Preview", "P", "Mesh coloured by thickness (void faces hidden).", GH_ParamAccess.item);
+            p.AddGenericParameter("Design", "Design", "The model with this thickness and the Layer Rule and bond it was optimised with, in one wire. Connect it to Print Layers or Shell Analysis.", GH_ParamAccess.item);
+            p.AddNumberParameter("Thickness", "Thickness", "Wall thickness per face [mm] (0 for removed faces in void mode).", GH_ParamAccess.list);
+            p.AddMeshParameter("Preview", "Preview", "Mesh coloured by thickness (void faces hidden).", GH_ParamAccess.item);
+            p.AddTextParameter("Info", "Info", "Status.", GH_ParamAccess.item);
+            p.AddBooleanParameter("Converged", "Converged", "True once compliance has stabilised at the target volume.", GH_ParamAccess.item);
+            p.AddIntegerParameter("Iteration", "i", "Iterations done (or the one shown in playback).", GH_ParamAccess.item);
             p.AddNumberParameter("Compliance", "C", "Compliance history [N·mm].", GH_ParamAccess.list);
             p.AddNumberParameter("Volume", "V", "Volume-fraction history.", GH_ParamAccess.list);
-            p.AddIntegerParameter("Iteration", "i", "Iterations done.", GH_ParamAccess.item);
-            p.AddBooleanParameter("Converged", "Done", "True once compliance has stabilised at the target volume.", GH_ParamAccess.item);
-            p.AddTextParameter("Info", "I", "Status.", GH_ParamAccess.item);
+            p.AddBooleanParameter("Solid", "S", "Per face: true if material is kept.", GH_ParamAccess.list);
+            p.AddNumberParameter("Sensitivity", "α", "Filtered sensitivity per face (higher = more useful material).", GH_ParamAccess.list);
         }
 
         protected override void SolveInstance(IGH_DataAccess da)
@@ -76,28 +85,28 @@ namespace ClayBeso.GH.Components
             int mode = 0, maxIt = 100;
             double vf = 0.0, tMin = 3.5, tMax = 7, er = 0.03, radius = 10, pen = 3, ar = 0.02;
             bool run = false, reset = false;
-            if (!da.GetData(0, ref modelObj)) return;
-            da.GetData(1, ref mode);
-            da.GetData(2, ref vf);
-            da.GetData(3, ref tMin);
-            da.GetData(4, ref tMax);
-            da.GetData(5, ref er);
-            da.GetData(6, ref radius);
-            da.GetData(7, ref maxIt);
-            da.GetData(8, ref run);
-            da.GetData(9, ref reset);
-            da.GetData(10, ref pen);
-            da.GetData(11, ref ar);
+            if (!da.GetData(In("Model"), ref modelObj)) return;
+            da.GetData(In("Mode"), ref mode);
+            da.GetData(In("Volume Fraction"), ref vf);
+            da.GetData(In("Min Thickness"), ref tMin);
+            da.GetData(In("Max Thickness"), ref tMax);
+            da.GetData(In("Evolution Rate"), ref er);
+            da.GetData(In("Filter Radius"), ref radius);
+            da.GetData(In("Max Iterations"), ref maxIt);
+            da.GetData(In("Run"), ref run);
+            da.GetData(In("Reset"), ref reset);
+            da.GetData(In("Penalty"), ref pen);
+            da.GetData(In("Admission Ratio"), ref ar);
             bool legend = true;
-            da.GetData(13, ref legend);
+            da.GetData(In("Legend"), ref legend);
             double playback = 1.0;
-            da.GetData(14, ref playback);
+            da.GetData(In("Playback"), ref playback);
             object ruleObj = null;
             double eta = 1.0;
-            da.GetData(15, ref ruleObj);
-            da.GetData(16, ref eta);
+            da.GetData(In("Layer Rule"), ref ruleObj);
+            da.GetData(In("Bond Efficiency"), ref eta);
             var rule = RhinoConvert.Unwrap<Printing.LayerRule>(ruleObj);
-            var range = ReadRange(da, 12, mode == 1 ? ((double, double)?)null : (tMin, tMax));
+            var range = ReadRange(da, "Colour Range", mode == 1 ? ((double, double)?)null : (tMin, tMax));
 
             var model = RhinoConvert.Unwrap<ShellModel>(modelObj);
             if (model == null) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Input is not a Shell Model."); return; }
@@ -172,16 +181,18 @@ namespace ClayBeso.GH.Components
             var design = _opt.DesignAt(playback, out int shown);
             var thickness = _opt.EffectiveThickness(design);
             var solid = _opt.Solid(design);
-            da.SetDataList(0, thickness);
-            da.SetDataList(1, solid);
-            if (_opt.Sensitivity != null) da.SetDataList(2, _opt.Sensitivity);
-            da.SetData(3, Preview.FaceColoured(_model.Mesh, thickness, _model.UnitScale, out var used, range,
+            da.SetDataList(Out("Thickness"), thickness);
+            da.SetDataList(Out("Solid"), solid);
+            if (_opt.Sensitivity != null) da.SetDataList(Out("Sensitivity"), _opt.Sensitivity);
+            da.SetData(Out("Preview"), Preview.FaceColoured(_model.Mesh, thickness, _model.UnitScale, out var used, range,
                 hide: solid.Select(s => !s).ToArray()));
             SetLegend("Wall thickness", "mm", used, legend);
-            da.SetDataList(4, _opt.ComplianceHistory);
-            da.SetDataList(5, _opt.VolumeFractionHistory);
-            da.SetData(6, shown);
-            da.SetData(7, _opt.Converged);
+            da.SetDataList(Out("Compliance"), _opt.ComplianceHistory);
+            da.SetDataList(Out("Volume"), _opt.VolumeFractionHistory);
+            da.SetData(Out("Iteration"), shown);
+            da.SetData(Out("Converged"), _opt.Converged);
+            da.SetData(Out("Design"), new ShellDesign(_model, thickness, _opt.Rule, _opt.Rule != null ? _opt.Settings.Bond : null,
+                $"Shell BESO, iteration {shown}"));
 
             if (shown != _opt.Iteration)
                 AddRuntimeMessage(GH_RuntimeMessageLevel.Remark,
@@ -191,7 +202,7 @@ namespace ClayBeso.GH.Components
                 : _opt.Iteration >= _opt.Settings.MaxIterations ? "stopped at iteration limit"
                 : _opt.Iteration == 0 ? "ready (set Run = true)" : "running / paused";
             string c = _opt.ComplianceHistory.Count > 0 ? $"{_opt.ComplianceHistory.Last():G5} N·mm" : "-";
-            da.SetData(8,
+            da.SetData(Out("Info"),
                 $"{_opt.Settings.Mode} mode, {state}\nIteration {_opt.Iteration}" +
                 (shown != _opt.Iteration
                     ? $" (PLAYBACK: showing iteration {shown}, compliance {_opt.ComplianceHistory[shown - 1]:G5} N·mm)\n"

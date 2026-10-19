@@ -68,6 +68,14 @@ namespace ClayBeso.Optimisation
         /// <summary>Optimality-criteria damping exponent.</summary>
         public double Damping { get; set; } = 0.5;
 
+        /// <summary>
+        /// Thickness mode: filter the thickness itself (density filter) rather than only the
+        /// sensitivities. The wall thickness is then always a smooth field, an area-weighted average over
+        /// the filter radius, so it can't jump between neighbouring faces (no staircase edges, no jumps in
+        /// bead width along a layer). Sensitivities follow the filter exactly (chain rule).
+        /// </summary>
+        public bool ThicknessFilter { get; set; } = true;
+
         // --- void mode
         public double Penalty { get; set; } = 3;
         public double MinDensity { get; set; } = 1e-3;
@@ -204,6 +212,41 @@ namespace ClayBeso.Optimisation
             Scaling = BuildScaling();
         }
 
+        private bool UseThicknessFilter =>
+            Settings.Mode == BesoMode.Thickness && Settings.ThicknessFilter && Settings.FilterRadius > 0;
+
+        private double[] _volumeWeight;   // dV_design/dx_j (filtered: column sums of area-weighted W)
+
+        /// <summary>
+        /// Wall thickness [mm] for a vector of design variables. With the thickness filter this is the
+        /// filtered field (frozen faces keep their own value); otherwise the design itself.
+        /// </summary>
+        public double[] Physical(double[] design)
+        {
+            if (!UseThicknessFilter) return design;
+            var t = _filter.Apply(design);
+            for (int e = 0; e < t.Length; e++) if (_model.Frozen[e]) t[e] = design[e];
+            return t;
+        }
+
+        private double[] VolumeWeights()
+        {
+            if (_volumeWeight != null) return _volumeWeight;
+            int m = _model.ElementCount;
+            var w = new double[m];
+            if (UseThicknessFilter)
+            {
+                var rowArea = new double[m];
+                foreach (int e in _design) rowArea[e] = _model.Elements[e].Area;
+                w = _filter.ApplyTranspose(rowArea);
+            }
+            else
+            {
+                foreach (int e in _design) w[e] = _model.Elements[e].Area;
+            }
+            return _volumeWeight = w;
+        }
+
         /// <summary>Thickness mode: average wall thickness the design converges to [mm].</summary>
         public double TargetAverageThickness => _targetVolume / _designArea;
 
@@ -211,7 +254,14 @@ namespace ClayBeso.Optimisation
             Settings.Mode == BesoMode.Thickness ? Settings.MaxThickness : _model.Thickness[e];
 
         /// <summary>Volume of the design elements for the current design [mm^3].</summary>
-        public double DesignVolume => _design.Sum(e => ElementVolume(e, Design[e]));
+        public double DesignVolume
+        {
+            get
+            {
+                var t = Settings.Mode == BesoMode.Thickness ? Physical(Design) : Design;
+                return _design.Sum(e => ElementVolume(e, t[e]));
+            }
+        }
 
         public double CurrentVolumeFraction => DesignVolume / _referenceVolume;
 
@@ -226,8 +276,8 @@ namespace ClayBeso.Optimisation
         {
             var t = new double[_model.ElementCount];
             for (int e = 0; e < t.Length; e++)
-                t[e] = Settings.Mode == BesoMode.Thickness ? design[e] : (design[e] >= 1 ? _model.Thickness[e] : 0);
-            return t;
+                t[e] = Settings.Mode == BesoMode.Thickness ? 0 : (design[e] >= 1 ? _model.Thickness[e] : 0);
+            return Settings.Mode == BesoMode.Thickness ? (double[])Physical(design).Clone() : t;
         }
 
         /// <summary>Solid/void flag per element (all true in thickness mode).</summary>
@@ -263,12 +313,13 @@ namespace ClayBeso.Optimisation
         {
             int m = _model.ElementCount;
             var s = new ElementScaling(m);
+            var tp = Settings.Mode == BesoMode.Thickness ? Physical(design) : null;
             for (int e = 0; e < m; e++)
             {
                 if (Settings.Mode == BesoMode.Thickness)
                 {
-                    s.SetThickness(e, design[e]);
-                    if (_rule != null) s.Across[e] = Kappa(design[e]);
+                    s.SetThickness(e, tp[e]);
+                    if (_rule != null) s.Across[e] = Kappa(tp[e]);
                 }
                 else
                 {
@@ -312,8 +363,7 @@ namespace ClayBeso.Optimisation
             ComplianceHistory.Add(r.Compliance);
             VolumeFractionHistory.Add(CurrentVolumeFraction);
 
-            var raw = RawSensitivity(r);
-            var filtered = _filter.Apply(raw);
+            var filtered = DesignSensitivity(r, out _);
             if (_previousSensitivity != null && Settings.EffectiveHistoryAveraging)
                 for (int e = 0; e < filtered.Length; e++)
                     filtered[e] = 0.5 * (filtered[e] + _previousSensitivity[e]);
@@ -340,13 +390,14 @@ namespace ClayBeso.Optimisation
         {
             int m = _model.ElementCount;
             var a = new double[m];
+            var tp = Settings.Mode == BesoMode.Thickness ? Physical(Design) : null;
             for (int e = 0; e < m; e++)
             {
                 double area = _model.Elements[e].Area;
                 double em = r.MembraneWork[e], eb = r.BendingWork[e], wu = r.WeightWork[e];
                 if (Settings.Mode == BesoMode.Thickness)
                 {
-                    double t = Design[e];
+                    double t = tp[e];
                     // fm = t, fb = t^3, fw = t ; dV/dt = A. With printed layers the stiffness is
                     // t (Km + (k-1) Km1) + t^3 (Kb + (k-1) Kb1) with k = kappa(t), which adds
                     // k'(t) (t u'Km1u + t^3 u'Kb1u). em, eb are already the effective works.
@@ -364,6 +415,25 @@ namespace ClayBeso.Optimisation
                 }
             }
             return a;
+        }
+
+        /// <summary>
+        /// Sensitivity per unit volume with respect to the DESIGN variables (what the update uses), and
+        /// dV/dx per variable. With the thickness filter: dC/dx = W^T dC/dt and dV/dx = W^T A.
+        /// Without it, the classic filtered sensitivities.
+        /// </summary>
+        public double[] DesignSensitivity(AnalysisResult r, out double[] volumeWeight)
+        {
+            volumeWeight = VolumeWeights();
+            var raw = RawSensitivity(r);
+            if (!UseThicknessFilter) return _filter.Apply(raw);
+            int m = _model.ElementCount;
+            var g = new double[m];                    // -dC/dt on the design rows
+            foreach (int e in _design) g[e] = raw[e] * _model.Elements[e].Area;
+            var gx = _filter.ApplyTranspose(g);       // -dC/dx
+            var alpha = new double[m];
+            foreach (int j in _design) alpha[j] = volumeWeight[j] > 0 ? gx[j] / volumeWeight[j] : 0;
+            return alpha;
         }
 
         private double NextVolume()
@@ -398,6 +468,9 @@ namespace ClayBeso.Optimisation
             double move = st.MoveLimit * span;
             int nd = _design.Length;
             var t0 = _design.Select(e => Design[e]).ToArray();
+            var w = VolumeWeights();
+            // Volume of the design faces = (contribution of frozen variables) + sum_j w_j x_j.
+            double fixedPart = Enumerable.Range(0, _model.ElementCount).Where(j => _model.Frozen[j]).Sum(j => w[j] * Design[j]);
             var lo = new double[nd];
             var hi = new double[nd];
             for (int k = 0; k < nd; k++)
@@ -416,8 +489,8 @@ namespace ClayBeso.Optimisation
             double aMax = _design.Max(e => alpha[e]);
             double reachable = 0;
             for (int k = 0; k < nd; k++)
-                reachable += _model.Elements[_design[k]].Area * (alpha[_design[k]] > 0 ? hi[k] : lo[k]);
-            if (reachable < targetVolume * (1 - 1e-9) && aMax > aMin)
+                reachable += w[_design[k]] * (alpha[_design[k]] > 0 ? hi[k] : lo[k]);
+            if (fixedPart + reachable < targetVolume * (1 - 1e-9) && aMax > aMin)
             {
                 double shift = -aMin + 0.05 * (aMax - aMin);
                 alpha = (double[])alpha.Clone();
@@ -428,13 +501,13 @@ namespace ClayBeso.Optimisation
 
             double Volume(double lambda)
             {
-                double v = 0;
+                double v = fixedPart;
                 for (int k = 0; k < _design.Length; k++)
                 {
                     int e = _design[k];
                     double ratio = Math.Max(alpha[e], 0) / lambda;
                     double t = Math.Min(hi[k], Math.Max(lo[k], t0[k] * Math.Pow(ratio, st.Damping)));
-                    v += _model.Elements[e].Area * t;
+                    v += w[e] * t;
                 }
                 return v;
             }

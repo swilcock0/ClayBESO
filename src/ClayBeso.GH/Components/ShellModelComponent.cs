@@ -23,17 +23,17 @@ namespace ClayBeso.GH.Components
 
         protected override void RegisterInputParams(GH_InputParamManager p)
         {
-            p.AddMeshParameter("Mesh", "M", "Mid-surface mesh of the shell, in document units.", GH_ParamAccess.item);
-            p.AddGenericParameter("Material", "Mat", "Clay Material. Default: green clay (E = 1 MPa).", GH_ParamAccess.item);
-            p.AddNumberParameter("Thickness", "t", "Wall thickness [mm]: one value, or one per mesh face (after triangulation).", GH_ParamAccess.list, 5.0);
+            p.AddMeshParameter("Mesh", "Mesh", "Mid-surface mesh of the shell, in document units.", GH_ParamAccess.item);
+            p.AddGenericParameter("Material", "Material", "Clay Material. Default: green clay (E = 1 MPa, strength 0.03 MPa placeholder).", GH_ParamAccess.item);
+            p.AddNumberParameter("Thickness", "Thickness", "Wall thickness [mm]: one value, or one per mesh face (after triangulation).", GH_ParamAccess.list, 5.0);
             p.AddBooleanParameter("Fix Base", "Base", "Clamp every vertex within the tolerance of the lowest Z (the print bed).", GH_ParamAccess.item, true);
-            p.AddPointParameter("Supports", "S", "Extra support points (snapped to the nearest vertex).", GH_ParamAccess.list);
+            p.AddPointParameter("Supports", "Supports", "Extra support points (snapped to the nearest vertex).", GH_ParamAccess.list);
             p.AddBooleanParameter("Fix Rotations", "Rot", "Also fix rotations at supports (clamped). False = pinned.", GH_ParamAccess.item, true);
             p.AddNumberParameter("Tolerance", "Tol", "Base detection / snapping tolerance, in document units.", GH_ParamAccess.item, 0.5);
             p.AddBooleanParameter("Self-weight", "SW", "Include self-weight (gravity along -Z).", GH_ParamAccess.item, true);
             p.AddNumberParameter("Gravity Factor", "g", "Self-weight multiplier (e.g. 1.5 as a safety factor).", GH_ParamAccess.item, 1.0);
-            p.AddPointParameter("Load Points", "LP", "Points where point loads act (snapped to the nearest vertex).", GH_ParamAccess.list);
-            p.AddVectorParameter("Load Vectors", "LV", "Point-load forces [N]: one vector, or one per load point.", GH_ParamAccess.list);
+            p.AddPointParameter("Load Points", "Load Points", "Points where point loads act (snapped to the nearest vertex).", GH_ParamAccess.list);
+            p.AddVectorParameter("Load Vectors", "Load Vectors", "Point-load forces [N]: one vector, or one per load point.", GH_ParamAccess.list);
             p.AddIntegerParameter("Frozen Faces", "Fz", "Indices of faces the optimiser must not change (e.g. a rim or foot band).", GH_ParamAccess.list);
             for (int i = 1; i < p.ParamCount; i++) p[i].Optional = true;
         }
@@ -41,9 +41,9 @@ namespace ClayBeso.GH.Components
         protected override void RegisterOutputParams(GH_OutputParamManager p)
         {
             p.AddGenericParameter("Model", "Model", "Shell model.", GH_ParamAccess.item);
-            p.AddMeshParameter("Mesh", "M", "Triangulated analysis mesh. Face indices of all per-face outputs refer to this mesh.", GH_ParamAccess.item);
+            p.AddMeshParameter("Mesh", "Mesh", "Triangulated analysis mesh. Face indices of all per-face outputs refer to this mesh.", GH_ParamAccess.item);
             p.AddPointParameter("Supports", "S", "Supported vertices.", GH_ParamAccess.list);
-            p.AddTextParameter("Info", "I", "Model summary.", GH_ParamAccess.item);
+            p.AddTextParameter("Info", "Info", "Model summary.", GH_ParamAccess.item);
         }
 
         protected override void SolveInstance(IGH_DataAccess da)
@@ -75,7 +75,7 @@ namespace ClayBeso.GH.Components
             {
                 double s = RhinoConvert.DocToMm();
                 var mesh = RhinoConvert.ToTriMesh(rmesh, s);
-                var material = RhinoConvert.Unwrap<ClayMaterial>(matObj) ?? new ClayMaterial(1.0, 0.35, 1900);
+                var material = RhinoConvert.Unwrap<ClayMaterial>(matObj) ?? new ClayMaterial(1.0, 0.35, 1900, 0.03);
                 int n = mesh.VertexCount;
 
                 var fix = new bool[6 * n];

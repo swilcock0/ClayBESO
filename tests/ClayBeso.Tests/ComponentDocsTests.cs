@@ -31,6 +31,24 @@ public class ComponentDocsTests
             "set UPDATE_DOCS=1 and run `dotnet test tests/ClayBeso.Tests --filter ComponentDocs`.");
     }
 
+    /// <summary>
+    /// A legacy version (old input order, old ID) shares all its code with the current component, which
+    /// reads inputs and writes outputs by NAME. So both must have exactly the same names.
+    /// </summary>
+    [Theory]
+    [InlineData("BesoComponent", "BesoComponentV1")]
+    [InlineData("ShellAnalysisComponent", "ShellAnalysisComponentV1")]
+    public void LegacyVersionsHaveTheSameParameterNames(string current, string legacy)
+    {
+        string dir = Path.Combine(RepoRoot(), "src", "ClayBeso.GH", "Components");
+        var tabs = ReadTabs(Path.Combine(RepoRoot(), "src", "ClayBeso.GH", "ClayBesoInfo.cs"));
+        var a = ParseComponent(Path.Combine(dir, current + ".cs"), tabs);
+        var b = ParseComponent(Path.Combine(dir, legacy + ".cs"), tabs);
+        Assert.Equal(a.Inputs.Select(p => p.Name).OrderBy(n => n), b.Inputs.Select(p => p.Name).OrderBy(n => n));
+        Assert.Equal(a.Outputs.Select(p => p.Name).OrderBy(n => n), b.Outputs.Select(p => p.Name).OrderBy(n => n));
+        Assert.Equal("hidden", b.Exposure);
+    }
+
     // ------------------------------------------------------------------ generator
 
     private sealed record Param(string Kind, string Name, string Nick, string Description, string Access, string Default, bool Optional);
@@ -65,7 +83,8 @@ public class ComponentDocsTests
         sb.Append("The test suite fails while this file is out of date.\n\n");
         sb.Append("Units: lengths of geometry follow the Rhino document; thickness, layer height and bead width are in mm,\n");
         sb.Append("forces in N, stresses in MPa. *Generic* inputs carry ClayBESO objects (a Shell Model, a Clay Material,\n");
-        sb.Append("a Layer Rule) from the component that makes them. Per-face lists follow the faces of the triangulated\n");
+        sb.Append("a Layer Rule, a Design from Shell BESO, a Print from Print Layers) from the component that makes them.\n");
+        sb.Append("Per-face lists follow the faces of the triangulated\n");
         sb.Append("mesh output by Shell Model; per-vertex lists follow its vertices.\n\n");
         sb.Append("Inputs in **bold** must be connected. The others have a default (shown) or are optional. New inputs\n");
         sb.Append("are only ever added at the end, so saved definitions keep working.\n\n");
@@ -137,6 +156,8 @@ public class ComponentDocsTests
             ? tabs[baseArgs[4].Trim().Substring(4)]
             : "Other";
         var exposure = Regex.Match(src, @"GH_Exposure\.(\w+)");
+        // Hidden components are kept only so older definitions open: list them apart, last.
+        if (exposure.Success && exposure.Groups[1].Value == "hidden") tab = "Legacy (hidden from the toolbar)";
 
         return new Component(
             EvalString(baseArgs[0]), EvalString(baseArgs[1]), EvalString(baseArgs[2]), tab,

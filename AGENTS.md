@@ -103,8 +103,18 @@ into the Grasshopper Libraries folder. Rhino must be restarted to load a new bui
    Put geometry/maths in `ClayBeso.Core`, and only parameter wiring in `ClayBeso.GH`.
 3. **Never change an existing `ComponentGuid`** or the `ClayBesoInfo.Id`. Doing so breaks every
    saved .gh file that uses the component. New components get a new random GUID.
-4. **Do not reorder or remove inputs/outputs of existing components.** Saved definitions
-   connect by index. Add new inputs at the end and make them `Optional`.
+4. **Saved definitions connect wires by position, so never reorder or remove the inputs/outputs of a
+   released component in place.** The user wants the most important inputs/outputs at the top with
+   full-word nicknames, so when an order needs to change:
+   - give the component the new order and a **new GUID**;
+   - keep the old order as a hidden legacy subclass with the **old GUID** in `<Name>V1.cs`
+     (see `BesoComponentV1.cs`, `ShellAnalysisComponentV1.cs`), sharing all the code;
+   - read inputs and write outputs **by name** (`In("Name")`, `Out("Name")` on `ClayComponent`),
+     never by index, so both versions work;
+   - add the pair to `ComponentDocsTests.LegacyVersionsHaveTheSameParameterNames`.
+
+   Adding an input or output at the end of an existing component, marked `Optional`, is still fine
+   without a new version. Unreleased components can be reordered freely.
 5. **Numerical changes need a test.** Any change to elements, the solver, sensitivities or the
    layer field must keep the existing benchmarks passing and add a test for the new behaviour.
    The key safety nets:
@@ -121,6 +131,31 @@ into the Grasshopper Libraries folder. Rhino must be restarted to load a new bui
 8. **No AI attribution in git history.** Commit messages and pull request descriptions must
    not contain `Co-Authored-By:` trailers for AI assistants, or "Generated with …" lines.
 
+## Component structure (read before adding or rewiring components)
+
+The user wants **one straight chain with as few wires as possible**:
+
+```
+Shell Model -> Shell BESO --Design--> Print Layers --Print--> Print Check
+                  ^ Layer Rule (optional)
+```
+
+- `Fem/ShellDesign` = model + per-face thickness + resolved `LayerRule` + `BondModel`. Shell BESO
+  outputs one ("Design"); Print Layers also accepts a plain Shell Model.
+- `Printing/PrintPlanner.Plan(design, settings, rule?)` does layer heights, layer field (all three
+  methods; force-aligned runs its own analysis for the force flow), slicing, overhang check and flow
+  factors, returning a `PrintPlan` (the "Print" output).
+- `Printing/PrintChecker.Check(plan, settings)` does the finished-piece analysis + interlayer check
+  and the print stages, returning a `PrintCheckResult`.
+- Don't reintroduce designs where the user has to wire the same data twice or back up the canvas
+  (e.g. Force Flow from an analysis into the slicer). Compute it inside, or carry it in Design/Print.
+- **Every mode/option input gets an automatic dropdown.** Derive components from
+  `Common/ClayComponent` (or `LegendComponent`, which derives from it) and declare
+  `protected override IEnumerable<Dropdown> Dropdowns`. Shared option lists live in `Common/Modes`.
+  Dropdowns are only created when a component is newly placed, never on file load or paste.
+- Replaced components (Layer Heights, Non-planar Layers, Interlayer Check, Print Stages) are
+  `GH_Exposure.hidden`: kept so older .gh files open, not on the toolbar. Never delete them.
+
 ## Key design facts (read before editing the maths)
 
 - Element stiffness is stored at **unit thickness**, split into membrane+drilling `Km` (scales
@@ -135,6 +170,10 @@ into the Grasshopper Libraries folder. Rhino must be restarted to load a new bui
   volume. When positive-sensitivity faces can't hold the target volume (self-weight), the
   sensitivities are shifted by a constant. Don't go back to clipping at zero: that silently loses
   clay (regression test `SelfWeightOnFineMeshKeepsTheClayAndConverges`).
+- Thickness mode filters the **thickness itself** (`BesoSettings.ThicknessFilter`, default on):
+  design variables x, wall thickness `t = W x`, sensitivities through Wᵀ (`DesignSensitivity`).
+  `Design`/`DesignHistory` hold x; use `EffectiveThickness(design)` or `ScalingFor(design)` to get the
+  wall, never x directly. `ThicknessFilterTests` checks the chain rule by finite differences.
 - `LinearSystem` reuses the previous Cholesky factor as a CG preconditioner (reanalysis) and only
   refactorises when CG gets slow. `ReusedFactorisationGivesTheSameDesignAsDirectSolves` checks it. Void mode follows
   Huang & Xie (2007/2010) with an admission-ratio cap.
@@ -157,7 +196,8 @@ into the Grasshopper Libraries folder. Rhino must be restarted to load a new bui
 4. Give every input/output a description that states its **units**.
 5. Catch exceptions and report them with `AddRuntimeMessage(GH_RuntimeMessageLevel.Error, ...)`.
    Never let an exception escape `SolveInstance`.
-6. If the component outputs a false-colour preview mesh, derive from `Common/LegendComponent`
+6. Derive from `Common/ClayComponent` and declare a `Dropdown` for every mode/option input. If the
+   component outputs a false-colour preview mesh, derive from `Common/LegendComponent` instead
    instead of `GH_Component`. Add *Colour Range* (interval) and *Legend* (bool) inputs at the
    end, colour with `Preview.FaceColoured/VertexColoured(..., out used, range)`, then call
    `SetLegend(title, unit, used, show)` so the legend matches the mesh.

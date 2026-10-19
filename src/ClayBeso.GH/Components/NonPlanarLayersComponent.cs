@@ -16,6 +16,7 @@ namespace ClayBeso.GH.Components
     {
         public NonPlanarLayersComponent()
             : base("Non-planar Layers", "Layers",
+                "Legacy: replaced by Print Layers, which does this with fewer connections. Kept so older definitions still open.\n" +
                 "Slice the shell into non-planar layer toolpaths whose spacing follows the target layer heights.\n" +
                 "Method 0 = Conforming: layers fit both the base and the top rim, so every layer is a closed loop " +
                 "(heights matched as closely as possible). Check the error output.\n" +
@@ -27,6 +28,9 @@ namespace ClayBeso.GH.Components
                 Tab.Name, Tab.Print) { }
 
         public override Guid ComponentGuid => new Guid("f3c6b8d7-a609-4053-9eb6-5b7a2c4f9d06");
+        public override GH_Exposure Exposure => GH_Exposure.hidden;
+
+        protected override IEnumerable<Dropdown> Dropdowns => new[] { new Dropdown("Method", 0, Modes.LayerMethod) };
         protected override System.Drawing.Bitmap Icon => Icons.Get("NonPlanarLayers");
 
         protected override void RegisterInputParams(GH_InputParamManager p)

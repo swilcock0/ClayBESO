@@ -53,86 +53,92 @@ Every input and output of every component (type, default, units) is listed in
 |---|---|---|
 | 1 Model | **Clay Material** | E [MPa], ν, density [kg/m³], optional strength [MPa]. Defaults = green clay. |
 | 1 Model | **Shell Model** | Mesh + material + thickness [mm] + supports (auto base) + loads → model. |
-| 2 Analyse | **Shell Analysis** | Displacements, von Mises stress, compliance, deformed preview. |
-| 2 Analyse | **Interlayer Check** | Stresses across the printed layer interfaces vs a bond strength that drops with layer height; interface angle to the force flow. |
-| 2 Analyse | **Print Stages** | Analyses the piece as it is being printed, stage by stage, and finds the most critical moment. |
-| 3 Optimise | **Shell BESO** | Live BESO loop (Run / Reset). Mode 0 = thickness, 1 = void. |
-| 4 Print | **Layer Rule** | One thickness → layer-height rule shared by Layer Heights, Shell BESO and Shell Analysis. |
-| 4 Print | **Layer Heights** | Thickness per face → target layer height per vertex. |
-| 4 Print | **Non-planar Layers** | Layer height field → layer polylines + per-point height/width. |
-| 4 Print | **Wall Preview** | Thickened solid wall for visual checking. |
-| 5 Help | **Help** | Double-click (or press a Button on *Open*) to open the component reference in your browser. |
+| 3 Optimise | **Shell BESO** | Live BESO loop (Run / Reset), thickness or void mode. Its **Design** output carries everything downstream. |
+| 4 Print | **Print Layers** | Design → layer heights, non-planar layer toolpaths, flow factor and overhang check, in one step. |
+| 2 Analyse | **Print Check** | Print → interlayer, stress and stage check of the finished piece and of the print in progress. |
+| 4 Print | **Layer Rule** | Optional: how thickness becomes layer height. Give the same rule to BESO and it travels on in the Design. |
+| 2 Analyse | **Shell Analysis** | Optional: stress, displacement and force-flow lines of the starting shell (connect Shell Model) or the optimised one (connect BESO's Design). |
+| 4 Print | **Wall Preview** | Optional: thickened solid wall for visual checking. |
+| 5 Help | **Help** | Double-click to open the component reference; shows the installed version. |
+
+Every option input (BESO mode, layer method, mapping, what to show) gets a **dropdown** of named
+choices automatically when you place the component.
+
+The most important inputs and outputs sit at the top of each component, with full-word labels.
+Older components (Layer Heights, Non-planar Layers, Interlayer Check, Print Stages, and the earlier
+versions of Shell BESO and Shell Analysis with a different input order) are hidden from the toolbar
+but still load with their wiring intact, so existing definitions keep working. Print Layers and Print Check do
+the same jobs with fewer connections.
 
 ## Basic workflow
 
-A working example is in **`examples/TestVase.ghx`**. It builds a parametric vase from
-ellipses with sliders, then runs the full chain: Shell Model → Analysis → BESO → Layer
-Heights → Non-planar Layers. It needs no Rhino geometry: open it in Grasshopper and set BESO's
-*Run* toggle to true.
+One straight chain, no wires going back up the canvas:
 
 ```
-Surface/Brep ──Mesh (QuadRemesh or Mesh Surface)──► Shell Model ◄── Clay Material
-                                                      │
-                                ┌─────────────────────┼───────────────────┐
-                                ▼                     ▼                   ▼
-                          Shell Analysis          Shell BESO         Wall Preview
-                       (check the start)     (Run = Boolean Toggle)
-                                                      │ t (thickness per face)
-                                                      ▼
-                                               Layer Heights ──h, tv──► Non-planar Layers
-                                                                          │
-                                                       Layers (polylines), h, w per point
-                                                                          ▼
-                                                        your toolpath / G-code definition
+Mesh ──► Shell Model ◄── Clay Material
+              │
+              ▼
+         Shell BESO ◄── Layer Rule (optional)        Run = Boolean Toggle
+              │ Design (model + thickness + rule + bond)
+              ▼
+         Print Layers   Method: Conforming / Eikonal / Force-aligned (dropdown)
+              │ Layers, Flow Factor, Realised Height, Width, Overhang Ratio ...► your toolpath / G-code
+              │ Print
+              ▼
+         Print Check    Show: utilisation / interface angle / stress / displacement / contact
+                        Stage: finished piece / worst print stage / any stage
 ```
 
-1. **Mesh the mid-surface** of the wall (the surface halfway through the wall thickness).
-   Aim for 2 000–20 000 faces with roughly even triangles/quads. Finer meshes are more
-   accurate. The bottom edge should sit on the build plate (lowest Z).
+A working example is in **`examples/TestVase.ghx`**. It builds a parametric vase from ellipses
+with sliders and needs no Rhino geometry: open it in Grasshopper and set BESO's *Run* toggle to
+true.
+
+1. **Mesh the mid-surface** of the wall (the surface halfway through the wall thickness). Aim for
+   2 000–20 000 faces with roughly even triangles or quads; finer meshes are more accurate. The
+   bottom edge should sit on the build plate (lowest Z).
 2. **Shell Model**: give the starting thickness (e.g. 5 mm). This is your **clay budget**: by
-   default BESO keeps this amount of clay and only moves it around. *Fix Base* clamps
-   everything at the lowest Z. Keep *Self-weight* on. Add point loads if needed (vectors in N).
-3. **Shell Analysis**: sanity-check displacements and stresses before optimising.
-4. **Shell BESO**: set **tMin / tMax** to the thinnest and thickest wall you can print. The
-   starting thickness must lie between them, ideally near the middle. Set a **filter radius**
-   of about 2–3 mesh edge lengths, then set **Run** to true with a Boolean Toggle. Watch the
-   preview evolve. *Converged* turns true when it is done. Toggle **Reset** to start again.
-   - Leave **Volume Fraction** at 0 to redistribute the same clay, which is the usual case.
-   - Set it above 0 only to change the amount of clay: the average wall becomes Vf × tMax.
-   - Void mode always needs a volume fraction, because it removes material.
-   - **Playback**: connect a 0–1 slider to scrub through the iterations after a run (1 = final).
-     The thickness output follows the slider, so downstream components update as well.
-5. **Layer Heights**: set **hMin / hMax** from your nozzle (see the table below) and choose how
-   thickness turns into layer height. With flow control (e.g. the WASP 40100), both bead width
-   and layer height can follow the design, and the flow factor supplies the clay:
-   - *Mapping 3, proportional* (**default**): the thinnest wall gets hMin and the thickest gets
-     hMax. Connect BESO's tMin–tMax to **Thickness Range** so the mapping is anchored. Otherwise
-     a nearly uniform wall would still be spread over the whole height range.
-   - *Mapping 2, constant aspect ratio* (h = k·t): also rises with thickness, and keeps the same
-     bead shape (height/width) everywhere.
+   default BESO keeps this amount of clay and only moves it around. *Fix Base* clamps everything
+   at the lowest Z. Keep *Self-weight* on. Add point loads if needed (vectors in N).
+3. **Shell BESO**: set **tMin / tMax** to the thinnest and thickest wall you can print. The
+   starting thickness must lie between them, ideally near the middle. Set a **filter radius** of
+   about 2–3 mesh edge lengths, then switch **Run** on. *Converged* turns true when it's done;
+   **Reset** starts again.
+   - Leave **Volume Fraction** at 0 to redistribute the same clay (the usual case). Above 0 it
+     changes the amount: the average wall becomes Vf × tMax. Void mode always needs one.
+   - Connect a **Layer Rule** to optimise a wall that is weaker across its layers (see *Printed
+     layers inside the optimisation*). The rule then travels on in the Design output.
+   - **Playback**: a 0–1 slider scrubs through the iterations (1 = final). The Design output
+     follows it, so everything downstream updates too.
+4. **Print Layers**: connect BESO's **Design**. Pick the **Method**:
+   - *Conforming*: every layer is a closed loop and the last one is the rim; heights matched as
+     closely as the geometry allows.
+   - *Eikonal*: heights matched exactly, but the top may end in partial layers.
+   - *Force-aligned*: like Conforming, but the layers turn to lie across the force flow so the
+     interfaces are compressed rather than sheared. The force flow is computed inside; there's
+     nothing to wire.
 
-   For fixed flow (no flux control):
-   - *Mapping 0, constant bead area*: flow and feed stay fixed and only the nozzle height
-     changes, so a thicker wall comes from a lower, more squashed layer.
-   - *Mapping 1, linear inverse*: the thickest wall gets hMin and the thinnest gets hMax.
+   Layer heights come from the Layer Rule (BESO's, a rule connected here, or the default:
+   proportional, 1–2.25 mm). The outputs per path point are the **Flow Factor** (multiply your
+   nominal extrusion by it), **Realised Height**, **Width**, **Overhang Ratio** and **Layer
+   Tilt**, plus more at the bottom. *Show* picks the preview: layer height, height error, wall
+   thickness or wall lean. *Info* lists the flow range and any printability warnings.
 
-   Structurally, the clay per unit of wall area is set by the **thickness**. A taller layer puts
-   more clay down per pass and gives fewer layers over the same height.
-6. **Non-planar Layers**: produces one branch per layer.
-   - *Method 0 (Conforming)*: every layer is a closed loop and the last layer is the rim.
-     Heights are matched as closely as the geometry allows. Check the *Info* and *Preview*
-     (colour = height error).
-   - *Method 1 (Eikonal)*: heights are matched exactly, but the top may end in partial layers.
-   - *Method 2 (Force-aligned)*: like Conforming, but layers turn to lie across the force flow
-     (connect **Force Flow** from Shell Analysis). See *Overhangs, force flow and print stages* below.
-   - The overhang check (Wall Lean, Bead Offset, Overhang Ratio, Layer Tilt) runs on every path.
-   - Connect **Vertex Thickness** from Layer Heights to get the per-point **Bead Area** and
-     **Flow Factor**. The flow factor is the clay volume needed at that point, relative to the
-     *Nominal Area* (default: the median). Multiply your nominal extrusion by it.
-   - The flow factor uses the *realised* layer height, so the wall still comes out at the
-     optimised thickness even where the layers can't follow the target height exactly.
-   - Feed the polylines (Z per point is already in the curve) and the flow factors into your
-     toolpath / G-code definition.
+   With flow control (e.g. the WASP 40100), both bead width and layer height follow the design
+   and the flow factor supplies the clay. The flow factor uses the *realised* layer height, so
+   the wall comes out at the optimised thickness even where layers can't hit the target height.
+   Structurally, the clay per unit of wall area is set by the **thickness**; a taller layer puts
+   more clay down per pass and gives fewer layers.
+5. **Print Check**: connect **Print**, and give a clay **Strength** (here or on Clay Material).
+   It checks the finished piece under all loads and the print at N stages under self-weight, and
+   reports the highest interlayer utilisation and the worst stage. *Show* and *Stage* choose what
+   the preview colours and when; *Flow Lines* draws the force flow.
+
+**Layer Rule mappings** (dropdown on the Layer Rule):
+- *Proportional* (default): thinnest wall → hMin, thickest → hMax. Set **Thickness Range** to BESO's
+  tMin–tMax (BESO does this automatically for the rule it passes on).
+- *Constant aspect ratio* (h = k·t): rises with thickness, same bead shape everywhere.
+- *Constant bead area* and *Linear inverse*: for printers without flow control, where a thicker
+  wall can only come from a lower, more squashed layer.
 
 ## Printer settings (Delta WASP 40100 Clay, 1.5–3 mm nozzles)
 
@@ -169,94 +175,82 @@ Defaults when nothing is connected:
 
 | Component | Shows | Default range |
 |---|---|---|
-| Shell Analysis | von Mises stress [MPa] | min–max of the result |
 | Shell BESO | wall thickness [mm] | tMin–tMax (void mode: min–max) |
-| Layer Heights | target layer height [mm] | hMin–hMax |
-| Non-planar Layers | layer-height error [%] | symmetric about 0 |
+| Print Layers | layer height / height error / thickness / wall lean | hMin–hMax / symmetric / min–max / 0–90° |
+| Print Check | utilisation / interface angle / stress / displacement / contact | 0–max (≥ 1) / 0–90° / min–max / min–max / 0–1 |
+| Shell Analysis | von Mises stress [MPa] or displacement [mm] | min–max of the result |
 
 Fix the range to compare runs. With an automatic range, a tiny variation fills the whole
 blue-to-red scale.
 
-## Interlayer check (layer height in the structure)
+## Layer interfaces (layer height in the structure)
 
-The shell analysis treats the wall as solid. Printed clay is weakest **between layers**: a bead
-of width w and height h has rounded sides, so it bonds to the next layer over a flat strip only
-about w − h wide. The **Interlayer Check** component:
+The shell analysis treats the wall as solid. Printed clay is weakest **between layers**: a bead of
+width w and height h has rounded sides, so it bonds to the next layer over a flat strip only about
+w − h wide. **Print Check** accounts for this:
 
-1. takes the wall thickness (bead width w) and the **Layer Field** φ from Non-planar Layers. The
-   realised layer height h and the stacking direction (across the layers, following the real
-   non-planar layers) come from φ;
-2. rotates the analysis stresses into the layer directions and puts the across-layer force and
-   moment through the bonded strip only, a fraction **c = (w − h)/w** of the wall;
-3. reports a **utilisation**, the worst of
+1. It takes the wall thickness (bead width w) and the printed layers from the Print. The realised
+   layer height h and the stacking direction, which follows the real non-planar layers, come from
+   the layer field.
+2. It rotates the stresses into the layer directions and puts the across-layer force and moment
+   through the bonded strip only, a fraction **c = (w − h)/w** of the wall.
+3. It reports a **utilisation**, the worst of
    - **bond**: tension + shear on the strip vs **η·f**, and
-   - **bearing**: compression on the narrowed strip vs **f**, which matters for wet clay
-     carrying its own weight.
+   - **bearing**: compression on the narrowed strip vs **f**, which matters for wet clay carrying
+     its own weight.
 
-Inputs: clay **strength f** (or set it on Clay Material) and **bond efficiency η**. η is the
-interface strength per unit contact area relative to the bulk clay. Leave it at 1 to see the
-geometric effect alone, then calibrate it from tests, for example by comparing printed samples
-pulled across the layers with solid ones.
-
-With the same wall, taller layers mean less contact and higher utilisation. On a 6 mm wall,
-going from 1 mm to 3 mm layers raises the peak utilisation about 2.7× in the test case. With
-*Orthotropic* on (the default), the analysis inside the check also treats the wall as weaker across
-the layers, so stresses redistribute as they would in the print.
+Inputs: clay **strength f** (or set it on Clay Material) and **bond efficiency η**, the interface
+strength per unit contact area relative to the bulk clay. Leave η at 0 to use the design's (or 1),
+then calibrate it from tests (`docs/VALIDATION.md` §4). With *Orthotropic* on (the default), the
+wall is also weaker across its layers, so stresses redistribute as they would in the print. On a
+6 mm wall, going from 1 mm to 3 mm layers raises the peak utilisation about 2.7× in the test case.
 
 ## Printed layers inside the optimisation
 
-Connect a **Layer Rule** to Shell BESO (and the same rule to Layer Heights and Shell Analysis) and
-BESO optimises a wall that is weaker across its layers. Its across-layer stiffness is scaled by
-**κ = η · (t − h(t))/t**, using the same bond model as the Interlayer Check, with h(t) from the rule.
-The Layer Rule's outputs then match what is printed:
+Connect a **Layer Rule** to Shell BESO and it optimises a wall that is weaker across its layers:
+across-layer stiffness × **κ = η · (t − h(t))/t**, the same bond model Print Check uses, with h(t)
+from the rule. BESO resolves the rule (its Thickness Range becomes tMin–tMax) and passes it on in
+the **Design**, so Print Layers prints the layer heights BESO assumed.
 
-```
-Layer Rule ──► Shell BESO ──t──► Layer Heights ──h──► Non-planar Layers
-     └──────────────────────────────┘ (same rule on both)
-```
-
-- Set the rule's **Thickness Range** to BESO's tMin–tMax, so every component maps thickness the
-  same way (the components warn if it is missing).
-- Layer directions are taken as horizontal inside BESO; the Interlayer Check uses the real
-  non-planar layers afterwards.
-- With the proportional mapping, h grows with t, so the contact fraction c stays roughly constant
-  and κ mostly acts as a near-uniform across-layer weakening (η × 0.68–0.71 with the defaults). That
-  still changes where BESO puts clay: in the test case the layer-aware design is about 2% stiffer
-  than the layer-naive one when both are judged with layers. Mappings where h does not follow t
-  (e.g. constant bead area) make κ vary with thickness, and BESO then trades layer contact
-  against wall thickness.
+- Inside BESO the layers are taken as horizontal; Print Check uses the real non-planar layers.
+- With the proportional mapping, h grows with t, so c stays roughly constant and κ is a
+  near-uniform across-layer weakening (η × 0.68–0.71 with the defaults). That still changes where
+  BESO puts clay: in the test case the layer-aware design is about 2% stiffer than the layer-naive
+  one when both are judged with layers. Mappings where h does not follow t (e.g. constant bead
+  area) make κ vary with thickness, and BESO then trades layer contact against wall thickness.
 - Shell BESO's Info shows the rule, η and the κ range.
 
 ## Overhangs, force flow and print stages
 
-These follow two studies of non-planar clay printing by Vele, Kurilla & Achten (eCAADe 2023, and
-Vele & Achten, DARE 2023). Planar clay prints started to slump at about 45° of overhang and failed
+These follow two studies of non-planar clay printing by Vele, Kurilla & Achten (eCAADe 2023) and
+Vele & Achten (DARE 2023). Planar clay prints started to slump at about 45° of overhang and failed
 above 55°, while non-planar layers reached 70–80°. The weak point is the layer interface: on an
 overhang it is loaded in shear and layers slide.
 
-- **Overhang check** (Non-planar Layers, always on). At every path point:
-  - **Wall Lean**: how far the wall leans from vertical across the bead.
+- **Overhang check** (Print Layers, always on). At every path point:
+  - **Wall Lean**: how far the wall leans from vertical, across the bead.
   - **Bead Offset** = realised layer height × tan(lean): how far the bead sits past the one below.
   - **Overhang Ratio** = offset ÷ bead width: the unsupported fraction of the bead.
   - **Layer Tilt**: the layer's slope along the path. The WASP 40100 can't tilt its nozzle, so steep
     tilts scrape the clay, which is one of the failures Vele & Achten saw.
 
   Points beyond **Max Overhang** (default 45°), a ratio of 0.5, or **Max Tilt** (default 30°) are
-  counted in *Info* and raise warnings. Lower layers over an overhang reduce the bead offset; this is
-  why condensed non-planar layers help.
-- **Force flow and interface angle.** Shell Analysis and Interlayer Check output the **Force Flow**:
-  the direction of the dominant in-plane force on each face, with its length (0–1) saying how
-  directional the force is. Interlayer Check also gives the **Interface Angle** between the force and
-  the stacking direction. 0° means the force crosses the layers squarely (interfaces in compression);
-  90° means it runs along them (interfaces in shear).
-- **Force-aligned layers** (Non-planar Layers, Method 2). Connect Force Flow, and the layers turn to
-  lie across the force, by at most **Max Deviation** (default 30°). Every layer stays a closed loop.
-  In a test cylinder pushed sideways at the rim, the force-weighted interface angle dropped from 26°
-  to 18°. Under pure self-weight the force is vertical and the layers stay planar.
-- **Print Stages** (Analyse tab). Overhangs fail *during* printing. This component analyses the piece
-  at N stages, each with only the layers printed so far loaded by their own weight, plus the
-  interlayer check. It reports the height, displacement, stress and interlayer utilisation per stage
-  and picks out the worst one. Clay stiffness is taken as the same at every height for now.
+  counted in *Info* and raise warnings. Lower layers over an overhang reduce the bead offset; this
+  is why condensed non-planar layers help.
+- **Force flow and interface angle** (Print Check; Shell Analysis for the starting shell). The force
+  flow is the direction of the dominant in-plane force on each face; *Flow Lines* draws it. The
+  **interface angle** is the angle between the force and the stacking direction. 0° means the force
+  crosses the layers squarely (interfaces in compression); 90° means it runs along them
+  (interfaces in shear).
+- **Force-aligned layers** (Print Layers, Method *Force-aligned*). The layers turn to lie across the
+  force, by at most **Max Deviation** (default 30°), and every layer stays a closed loop. Print
+  Layers computes the force flow itself. In a test cylinder pushed sideways at the rim, the
+  force-weighted interface angle dropped from 26° to 18°. Under pure self-weight the force is
+  vertical and the layers stay planar.
+- **Print stages** (Print Check). Overhangs fail *during* printing. Print Check analyses the piece
+  at N stages, each with only the layers printed so far loaded by their own weight, and picks out
+  the worst one (*Stage* dropdown → *Worst print stage* to see it). Clay stiffness is taken as the
+  same at every height for now.
 
 The tests to calibrate Max Overhang and Max Tilt for your clay and printer are in
 `docs/VALIDATION.md` §7.
@@ -273,6 +267,14 @@ height and bead width are always in millimetres**, forces in **newtons**, stress
 | Green / wet (printing) | 0.1–5 | 1800–2000 | governs collapse while printing |
 | Leather hard | 10–50 | ~1900 | |
 | Fired | 10 000–30 000 | 2000–2400 | |
+
+**Strength** (Clay Material, default **0.03 MPa**) is a cautious placeholder for soft printing clay.
+Printing clays read about 0.6–1.3 kg/cm² on a pocket penetrometer (Friedman-Gerlicz et al. 2024),
+which is an unconfined compressive strength of 0.06–0.13 MPa. Interfaces fail in shear and tension,
+which are weaker, so the default is about half the softer value. Measure your own clay: reading
+[kg/cm²] × 0.098 = MPa, then halve it (`docs/VALIDATION.md` §2). Until you do, read utilisation as
+relative (where is worst, which design is better), not absolute. Green-clay strength changes a lot
+with water content and drying time.
 
 For a **stiffness** optimisation the absolute value of E only scales the displacements. The
 optimised *shape* does not depend on it. It matters for checking deflections and stresses.

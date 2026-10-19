@@ -39,7 +39,7 @@ You should hear back that all tests pass.
 
 Good requests (clear and testable):
 
-- "Add an output to Non-planar Layers with the total toolpath length per layer."
+- "Add an output to Print Layers with the total toolpath length per layer."
 - "Let Shell Model accept support curves as well as points."
 - "Add a stress-based optimisation criterion and a test that checks it."
 - "Explain in simple terms what the Filter Radius does, and what happens if I double it."
@@ -83,5 +83,5 @@ Ranked roughly by value for clay printing (details in `AGENTS.md` → *Known lim
 5. A more accurate membrane element (lets you use coarser meshes).
 6. **Your own toolpath design** for walls thicker than one bead, for example back-and-forth or
    woven paths in the style of WeaveSlicer (Friedman-Gerlicz et al., CHI 2024). Use the BESO
-   thickness and the Non-planar Layers curves as inputs. This is open design territory: build it
+   thickness and the Print Layers curves as inputs. This is open design territory: build it
    as your own Grasshopper definition first, and only move it into the plugin once it works.

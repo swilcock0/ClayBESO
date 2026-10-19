@@ -11,7 +11,7 @@ namespace ClayBeso.GH.Common
     /// top-left corner of the Rhino viewports. Legends of several components sit side by side,
     /// in canvas order.
     /// </summary>
-    public abstract class LegendComponent : GH_Component
+    public abstract class LegendComponent : ClayComponent
     {
         private sealed class Legend
         {
@@ -41,6 +41,10 @@ namespace ClayBeso.GH.Common
         /// Reads an optional colour-range interval input. Returns the fallback when nothing valid
         /// is connected (fallback null = automatic min-max of the data).
         /// </summary>
+        /// <summary>Colour range from the input with this name (see the index overload).</summary>
+        protected (double lo, double hi)? ReadRange(IGH_DataAccess da, string input, (double lo, double hi)? fallback) =>
+            ReadRange(da, In(input), fallback);
+
         protected static (double lo, double hi)? ReadRange(IGH_DataAccess da, int index, (double lo, double hi)? fallback)
         {
             var iv = Interval.Unset;

@@ -11,6 +11,7 @@ namespace ClayBeso.GH.Components
     {
         public PrintStagesComponent()
             : base("Print Stages", "Stages",
+                "Legacy: replaced by Print Check, which does this with fewer connections. Kept so older definitions still open.\n" +
                 "Analyse the shell while it is being printed: at each stage only the layers printed so far (from the " +
                 "Layer Field of Non-planar Layers) exist, loaded by their own weight. Overhangs and soft clay usually fail " +
                 "part-way up, which an analysis of the finished piece can't show.\n" +
@@ -21,7 +22,7 @@ namespace ClayBeso.GH.Components
 
         public override Guid ComponentGuid => new Guid("cb1e458c-578c-4b01-a5ff-7a19f038b41a");
         protected override System.Drawing.Bitmap Icon => Icons.Get("PrintStages");
-        public override GH_Exposure Exposure => GH_Exposure.secondary;
+        public override GH_Exposure Exposure => GH_Exposure.hidden;
 
         protected override void RegisterInputParams(GH_InputParamManager p)
         {

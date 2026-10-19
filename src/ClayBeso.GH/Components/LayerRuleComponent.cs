@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using ClayBeso.GH.Common;
 using ClayBeso.Printing;
 using Grasshopper.Kernel;
@@ -6,7 +7,7 @@ using Rhino.Geometry;
 
 namespace ClayBeso.GH.Components
 {
-    public class LayerRuleComponent : GH_Component
+    public class LayerRuleComponent : ClayComponent
     {
         public LayerRuleComponent()
             : base("Layer Rule", "Rule",
@@ -16,23 +17,25 @@ namespace ClayBeso.GH.Components
                 Tab.Name, Tab.Print) { }
 
         public override Guid ComponentGuid => new Guid("9e41c2d7-38b5-4f06-a1d9-7c5e2b8f0a63");
+
+        protected override IEnumerable<Dropdown> Dropdowns => new[] { new Dropdown("Mapping", 3, Modes.Mapping) };
         protected override System.Drawing.Bitmap Icon => Icons.Get("LayerRule");
         public override GH_Exposure Exposure => GH_Exposure.primary;
 
         protected override void RegisterInputParams(GH_InputParamManager p)
         {
-            p.AddIntegerParameter("Mapping", "Map", "3 = proportional (thicker wall, taller layer), 2 = constant aspect ratio (h = k·t), 0 = constant bead area (fixed flow), 1 = linear inverse (fixed flow).", GH_ParamAccess.item, 3);
-            p.AddNumberParameter("Min Layer Height", "hMin", "Smallest layer height [mm]. At least 0.25× nozzle diameter (0.75 mm for a 3 mm nozzle).", GH_ParamAccess.item, 1.0);
-            p.AddNumberParameter("Max Layer Height", "hMax", "Largest layer height [mm]. At most 0.75× nozzle diameter (2.25 mm for a 3 mm nozzle).", GH_ParamAccess.item, 2.25);
+            p.AddIntegerParameter("Mapping", "Mapping", "3 = proportional (thicker wall, taller layer), 2 = constant aspect ratio (h = k·t), 0 = constant bead area (fixed flow), 1 = linear inverse (fixed flow).", GH_ParamAccess.item, 3);
+            p.AddNumberParameter("Min Layer Height", "Min Height", "Smallest layer height [mm]. At least 0.25× nozzle diameter (0.75 mm for a 3 mm nozzle).", GH_ParamAccess.item, 1.0);
+            p.AddNumberParameter("Max Layer Height", "Max Height", "Largest layer height [mm]. At most 0.75× nozzle diameter (2.25 mm for a 3 mm nozzle).", GH_ParamAccess.item, 2.25);
             p.AddNumberParameter("Bead Area", "A", "Bead cross-section [mm²] for mapping 0. 0 = automatic.", GH_ParamAccess.item, 0.0);
             p.AddNumberParameter("Aspect Ratio", "k", "Layer height / bead width for mapping 2.", GH_ParamAccess.item, 0.4);
-            p.AddIntervalParameter("Thickness Range", "tR", "Mappings 1 and 3: thickness [mm] mapped onto hMin..hMax. Empty = BESO's tMin..tMax inside BESO, or the field's own range elsewhere. Set it explicitly to make every component use the same mapping.", GH_ParamAccess.item);
+            p.AddIntervalParameter("Thickness Range", "Thickness Range", "Mappings 1 and 3: thickness [mm] mapped onto hMin..hMax. Empty = BESO's tMin..tMax inside BESO, or the field's own range elsewhere. Set it explicitly to make every component use the same mapping.", GH_ParamAccess.item);
             for (int i = 0; i < p.ParamCount; i++) p[i].Optional = true;
         }
 
         protected override void RegisterOutputParams(GH_OutputParamManager p)
         {
-            p.AddGenericParameter("Layer Rule", "Rule", "Layer rule.", GH_ParamAccess.item);
+            p.AddGenericParameter("Layer Rule", "Layer Rule", "Layer rule: connect it to Shell BESO (it then travels on in the Design) or to Print Layers.", GH_ParamAccess.item);
         }
 
         protected override void SolveInstance(IGH_DataAccess da)

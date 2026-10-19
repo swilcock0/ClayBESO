@@ -74,6 +74,16 @@ expensive as a factorisation. Results match direct solves to ~1e-11.
 
 The analytic sensitivities are checked against central finite differences in the tests.
 
+**Thickness filter (thickness mode, default).** Filtering only the sensitivities leaves the
+thickness free to jump between neighbouring faces, which makes stair-stepped edges and jumps in bead
+width along a layer. Instead the optimiser works on design variables x, and the wall thickness is
+their filtered field `t = W x` (frozen faces keep their own value), with W the same area-weighted
+linear-hat weights. The chain rule gives `dC/dx = Wᵀ dC/dt` and `dV/dx = Wᵀ A`, so the OC update
+uses `α_x = (Wᵀ(α A)) / (Wᵀ A)` and the volume `Σ_j (Wᵀ A)_j x_j`. Transitions are then about one
+filter radius wide. Tested: design sensitivities match finite differences; on a test vase the
+99th-percentile jump between neighbouring faces fell from 1.86 to 0.77 mm, with compliance within
+0.4 % and the same clay.
+
 ## 4. Layer heights from thickness
 
 The bead width is the optimised wall thickness, `w = t`. The bead cross-section is modelled as a
