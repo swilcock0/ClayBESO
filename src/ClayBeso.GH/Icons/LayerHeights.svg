@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <g fill="#C8643C" stroke="#3B2A22" stroke-width="0.7">
+    <rect x="2.5" y="17.6" width="13" height="3.4" rx="1.6"/>
+    <rect x="2.5" y="14.6" width="13" height="2.5" rx="1.2"/>
+    <rect x="2.5" y="12.2" width="13" height="1.9" rx="0.9"/>
+    <rect x="2.5" y="10.2" width="13" height="1.5" rx="0.7"/>
+    <rect x="2.5" y="8.5" width="13" height="1.2" rx="0.6"/>
+    <rect x="2.5" y="7.0" width="13" height="1.0" rx="0.5"/>
+    <rect x="2.5" y="5.7" width="13" height="0.8" rx="0.4"/>
+  </g>
+  <!-- dimension marks: tall layer vs thin layer -->
+  <g stroke="#2F6FB5" stroke-width="1" stroke-linecap="round" fill="none">
+    <path d="M 18.5 17.6 V 21 M 17.3 17.6 H 19.7 M 17.3 21 H 19.7"/>
+    <path d="M 18.5 8.5 V 9.7 M 17.3 8.5 H 19.7 M 17.3 9.7 H 19.7"/>
+  </g>
+</svg>

@@ -17,7 +17,7 @@ namespace ClayBeso.GH.Components
                 Tab.Name, Tab.Analyse) { }
 
         public override Guid ComponentGuid => new Guid("c9f3e5a4-73d6-4d20-8b83-2e4d9f1c6a03");
-        protected override System.Drawing.Bitmap Icon => null;
+        protected override System.Drawing.Bitmap Icon => Icons.Get("ShellAnalysis");
 
         protected override void RegisterInputParams(GH_InputParamManager p)
         {

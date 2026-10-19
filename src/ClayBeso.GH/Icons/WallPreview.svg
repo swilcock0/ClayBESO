@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <defs>
+    <linearGradient id="wpGrad" x1="4.8" y1="0" x2="19.2" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8E3F22"/>
+      <stop offset="0.38" stop-color="#E8A27E"/>
+      <stop offset="0.7" stop-color="#C8643C"/>
+      <stop offset="1" stop-color="#7A361D"/>
+    </linearGradient>
+  </defs>
+  <path d="M 8.5 20.5 L 15.5 20.5 C 19 17 19.5 12.5 17 8.5 C 15.6 6.5 15 5 16 2.5 L 8 2.5 C 9 5 8.4 6.5 7 8.5 C 4.5 12.5 5 17 8.5 20.5 Z" fill="url(#wpGrad)" stroke="#3B2A22" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- rim showing the wall thickness -->
+  <ellipse cx="12" cy="2.7" rx="4" ry="1.4" fill="#E8A27E" stroke="#3B2A22" stroke-width="0.9"/>
+  <ellipse cx="12" cy="2.7" rx="2.5" ry="0.75" fill="#4A2416"/>
+</svg>

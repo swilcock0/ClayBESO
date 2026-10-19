@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <defs><clipPath id="smClip"><path d="M 8.5 20.5 L 15.5 20.5 C 19 17 19.5 12.5 17 8.5 C 15.6 6.5 15 5 16 2.5 L 8 2.5 C 9 5 8.4 6.5 7 8.5 C 4.5 12.5 5 17 8.5 20.5 Z"/></clipPath></defs>
+  <path d="M 8.5 20.5 L 15.5 20.5 C 19 17 19.5 12.5 17 8.5 C 15.6 6.5 15 5 16 2.5 L 8 2.5 C 9 5 8.4 6.5 7 8.5 C 4.5 12.5 5 17 8.5 20.5 Z" fill="#E8A27E"/>
+  <g clip-path="url(#smClip)" fill="none" stroke="#9A4527" stroke-width="0.6">
+    <path d="M 3 6.5 H 21 M 3 11 H 21 M 3 15.5 H 21"/>
+    <path d="M 12 2 V 21 M 10 2.5 C 9.6 7 6.5 12 9.6 21 M 14 2.5 C 14.4 7 17.5 12 14.4 21"/>
+  </g>
+  <path d="M 8.5 20.5 L 15.5 20.5 C 19 17 19.5 12.5 17 8.5 C 15.6 6.5 15 5 16 2.5 L 8 2.5 C 9 5 8.4 6.5 7 8.5 C 4.5 12.5 5 17 8.5 20.5 Z" fill="none" stroke="#3B2A22" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- clamped base -->
+  <path d="M 5 21.6 H 19" fill="none" stroke="#3B2A22" stroke-width="1.1" stroke-linecap="round"/>
+  <path d="M 6.5 23.4 L 8 21.8 M 10 23.4 L 11.5 21.8 M 13.5 23.4 L 15 21.8 M 17 23.4 L 18.5 21.8" stroke="#3B2A22" stroke-width="0.7" stroke-linecap="round"/>
+</svg>

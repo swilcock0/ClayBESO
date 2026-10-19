@@ -22,6 +22,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 24 px component icons; regenerate from the SVGs with scripts/build-icons.ps1 -->
+    <EmbeddedResource Include="Icons\*.png" Exclude="Icons\icon.png" LogicalName="ClayBeso.Icons.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ClayBeso.Core\ClayBeso.Core.csproj" />
   </ItemGroup>
 

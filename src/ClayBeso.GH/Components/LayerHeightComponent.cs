@@ -20,7 +20,7 @@ namespace ClayBeso.GH.Components
                 Tab.Name, Tab.Print) { }
 
         public override Guid ComponentGuid => new Guid("e2b5a7c6-95f8-4f42-8da5-4a6f1b3e8c05");
-        protected override System.Drawing.Bitmap Icon => null;
+        protected override System.Drawing.Bitmap Icon => Icons.Get("LayerHeights");
 
         protected override void RegisterInputParams(GH_InputParamManager p)
         {

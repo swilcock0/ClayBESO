@@ -14,7 +14,7 @@ namespace ClayBeso.GH.Components
                 Tab.Name, Tab.Print) { }
 
         public override Guid ComponentGuid => new Guid("0a7d9e18-b71a-4164-8fa7-6c8b3d5a0e07");
-        protected override System.Drawing.Bitmap Icon => null;
+        protected override System.Drawing.Bitmap Icon => Icons.Get("WallPreview");
         public override GH_Exposure Exposure => GH_Exposure.secondary;
 
         protected override void RegisterInputParams(GH_InputParamManager p)

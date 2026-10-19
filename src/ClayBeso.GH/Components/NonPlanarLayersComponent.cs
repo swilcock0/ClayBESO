@@ -23,7 +23,7 @@ namespace ClayBeso.GH.Components
                 Tab.Name, Tab.Print) { }
 
         public override Guid ComponentGuid => new Guid("f3c6b8d7-a609-4053-9eb6-5b7a2c4f9d06");
-        protected override System.Drawing.Bitmap Icon => null;
+        protected override System.Drawing.Bitmap Icon => Icons.Get("NonPlanarLayers");
 
         protected override void RegisterInputParams(GH_InputParamManager p)
         {

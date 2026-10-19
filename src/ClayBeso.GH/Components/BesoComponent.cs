@@ -31,7 +31,7 @@ namespace ClayBeso.GH.Components
                 Tab.Name, Tab.Optimise) { }
 
         public override Guid ComponentGuid => new Guid("d1a4f6b5-84e7-4e31-9c94-3f5e0a2d7b04");
-        protected override System.Drawing.Bitmap Icon => null;
+        protected override System.Drawing.Bitmap Icon => Icons.Get("ShellBeso");
 
         protected override void RegisterInputParams(GH_InputParamManager p)
         {
@@ -180,7 +180,8 @@ namespace ClayBeso.GH.Components
                     ? $"Redistributing the starting clay: average wall {_opt.TargetAverageThickness:F2} mm\n"
                     : $"Volume fraction {_opt.CurrentVolumeFraction:F3} (target {_opt.Settings.VolumeFraction:F3}" +
                       (_opt.Settings.Mode == BesoMode.Thickness ? $" = average wall {_opt.TargetAverageThickness:F2} mm)\n" : ")\n")) +
-                $"Compliance {c}\nThickness {thickness.Where(t => t > 0).DefaultIfEmpty(0).Min():F2}-{thickness.Max():F2} mm");
+                $"Compliance {c}\nThickness {thickness.Where(t => t > 0).DefaultIfEmpty(0).Min():F2}-{thickness.Max():F2} mm" +
+                (_opt.Iteration > 0 ? $"\nLast solve: {_opt.Solver.LastTimings.Total:F0} ms ({_opt.Solver.LastTimings})" : ""));
         }
     }
 }

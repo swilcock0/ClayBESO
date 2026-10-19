@@ -1,5 +1,6 @@
 using System;
 using ClayBeso.Fem;
+using ClayBeso.GH.Common;
 using Grasshopper.Kernel;
 
 namespace ClayBeso.GH.Components
@@ -13,7 +14,7 @@ namespace ClayBeso.GH.Components
                 Tab.Name, Tab.Model) { }
 
         public override Guid ComponentGuid => new Guid("a3c1e9d2-51b4-4b0e-8f61-0c2b7d9a4e01");
-        protected override System.Drawing.Bitmap Icon => null;
+        protected override System.Drawing.Bitmap Icon => Icons.Get("ClayMaterial");
         public override GH_Exposure Exposure => GH_Exposure.primary;
 
         protected override void RegisterInputParams(GH_InputParamManager p)

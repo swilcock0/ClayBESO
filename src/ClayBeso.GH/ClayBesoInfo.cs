@@ -13,8 +13,20 @@ namespace ClayBeso.GH
         public override Guid Id => new Guid("6b0b6c1e-3f0a-4c55-9a43-2f7d4c1f8a10");
         public override string AuthorName => "Politecnico di Milano";
         public override string AuthorContact => "";
-        public override Bitmap Icon => null;
+        public override Bitmap Icon => Common.Icons.Get("ClayBeso");
         public override string Version => "0.1.0";
+    }
+
+    /// <summary>Registers the tab icon and short name shown when Grasshopper's tabs are collapsed.</summary>
+    public class ClayBesoPriority : GH_AssemblyPriority
+    {
+        public override GH_LoadingInstruction PriorityLoad()
+        {
+            var icon = Common.Icons.Get("ClayBeso");
+            if (icon != null) Grasshopper.Instances.ComponentServer.AddCategoryIcon(Tab.Name, icon);
+            Grasshopper.Instances.ComponentServer.AddCategorySymbolName(Tab.Name, 'C');
+            return GH_LoadingInstruction.Proceed;
+        }
     }
 
     /// <summary>Tab and panel names shared by all components.</summary>

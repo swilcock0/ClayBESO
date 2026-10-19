@@ -40,6 +40,7 @@ description: >
   Shell analysis and BESO thickness optimisation for 3D-printed clay, with non-planar,
   variable-height layer toolpaths and per-point flow factors.
 url: https://github.com/swilcock0/ClayBESO
+icon: icon.png
 keywords:
 - clay
 - 3d-printing
@@ -50,6 +51,7 @@ keywords:
 - fem
 "@
 Set-Content -Path (Join-Path $stage "manifest.yml") -Value $manifest -Encoding utf8
+Copy-Item (Join-Path $root "src\ClayBeso.GH\Icons\icon.png") (Join-Path $stage "icon.png")
 
 Push-Location $stage
 try {

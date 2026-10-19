@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- block of clay -->
+  <path d="M 3.5 9 L 12 4.8 L 20.5 9 L 12 13.2 Z" fill="#E8A27E" stroke="#3B2A22" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M 3.5 9 L 12 13.2 L 12 21.5 L 3.5 17.3 Z" fill="#C8643C" stroke="#3B2A22" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M 12 13.2 L 20.5 9 L 20.5 17.3 L 12 21.5 Z" fill="#9A4527" stroke="#3B2A22" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- wire-cut marks -->
+  <path d="M 7 8.4 Q 12 10.6 17 8.4" fill="none" stroke="#B5552F" stroke-width="0.7" stroke-linecap="round"/>
+</svg>
