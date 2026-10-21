@@ -217,6 +217,12 @@ namespace ClayBeso.Fem
             return res;
         }
 
+        /// <summary>K⁻¹ f with the stiffness of the last <see cref="Solve"/> (direct, exact).</summary>
+        internal double[] SolveExact(double[] f) => _system.SolveExact(f);
+
+        /// <summary>K u with the stiffness of the last <see cref="Solve"/>.</summary>
+        internal double[] MultiplyK(double[] u) => _system.MultiplyFull(u);
+
         private static double Lap(Stopwatch sw)
         {
             double ms = sw.Elapsed.TotalMilliseconds;

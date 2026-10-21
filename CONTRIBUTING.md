@@ -76,10 +76,10 @@ Be careful with requests like these:
 
 Ranked roughly by value for clay printing (details in `AGENTS.md` → *Known limitations*):
 
-1. Linear **buckling** check (wet clay walls often fail by buckling).
-2. **Layer-by-layer** (staged) analysis: check stability while the vase is partly printed.
+1. **Calibrate the buckling margin** with collapse-height prints (`docs/VALIDATION.md` §5).
+2. **Clay ageing in print stages**: lower layers have stiffened by the time the top is printed.
 3. **G-code export** from the layer polylines (Z per point, extrusion from width × height).
-4. Overhang/printability check for the layer field.
+4. **Several load cases** (printing vs. handling) in analysis and BESO.
 5. A more accurate membrane element (lets you use coarser meshes).
 6. **Your own toolpath design** for walls thicker than one bead, for example back-and-forth or
    woven paths in the style of WeaveSlicer (Friedman-Gerlicz et al., CHI 2024). Use the BESO

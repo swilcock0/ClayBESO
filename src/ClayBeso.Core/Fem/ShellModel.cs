@@ -29,7 +29,7 @@ namespace ClayBeso.Fem
         public double UnitWeight => Density * 9.80665e-9;
 
         public override string ToString() =>
-            $"Clay material (E = {E:G4} MPa, nu = {Nu:G3}, rho = {Density:G4} kg/m3" +
+            $"Material (E = {E:G4} MPa, nu = {Nu:G3}, rho = {Density:G4} kg/m3" +
             (Strength > 0 ? $", f = {Strength:G3} MPa)" : ")");
     }
 

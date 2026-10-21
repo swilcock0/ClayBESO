@@ -32,7 +32,7 @@ namespace ClayBeso.GH.Components
             p.AddIntegerParameter("Stages", "N", "Number of stages, evenly spaced in layers up to the last one.", GH_ParamAccess.item, 10);
             p.AddIntegerParameter("Show Stage", "Show", "Stage shown in the preview: 0 = first ... N-1 = finished piece; -1 = the worst stage.", GH_ParamAccess.item, -1);
             p.AddBooleanParameter("Vertical", "Vz", "Same setting as on Non-planar Layers (layer height measured in Z).", GH_ParamAccess.item, true);
-            p.AddNumberParameter("Strength", "f", "Clay strength [MPa] for the interlayer check at each stage. 0 = use the Clay Material strength; if that is 0 too, the check is skipped.", GH_ParamAccess.item, 0.0);
+            p.AddNumberParameter("Strength", "f", "Clay strength [MPa] for the interlayer check at each stage. 0 = use the Material strength; if that is 0 too, the check is skipped.", GH_ParamAccess.item, 0.0);
             p.AddNumberParameter("Bond Efficiency", "η", "Interface efficiency 0-1 (see Interlayer Check).", GH_ParamAccess.item, 1.0);
             p.AddBooleanParameter("Orthotropic", "Orth", "Treat the wall as weaker across its layers (stiffness × η·c from the realised layer heights).", GH_ParamAccess.item, true);
             p.AddBooleanParameter("Point Loads", "PL", "Also apply the model's point loads at every stage (normally they act only on the finished piece).", GH_ParamAccess.item, false);

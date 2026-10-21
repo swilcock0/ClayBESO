@@ -235,8 +235,15 @@ namespace ClayBeso.GH.Components
                 (flows.Length > 0 ? $"Flow factor {flows.Min():F2}-{flows.Max():F2} (nominal bead {plan.NominalArea:F2} mm²)\n" : "") +
                 $"Printability: max wall lean {leans.Max():F1}° ({plan.LeanFlags} points > {st.MaxOverhang:G3}°), " +
                 $"max tilt {tilts.Max():F1}° ({plan.TiltFlags} > {st.MaxTilt:G3}°), " +
-                $"max overhang ratio {ratios.Max():F2} ({plan.RatioFlags} > 0.5)" +
-                (plan.Flow != null ? "\nForce flow computed from the design (all loads)." : "");
+                $"max overhang ratio {ratios.Max():F2} ({plan.RatioFlags} > 0.5)\n" +
+                $"Bead contact: {plan.PoorContactFlags} points with layers taller than {PrintPlan.PoorContactRatio:G2}× the wall" +
+                (plan.Flow != null ? "\nForce flow computed from the design (all loads)." : "") +
+                (st.Method == LayerMethod.ForceAligned && plan.Field.ReducedTurnFaces > 0
+                    ? plan.Field.TurnFraction < 1
+                        ? $"\nForce-aligned: turned only {plan.Field.TurnFraction:P0} of the way (0% = same as Conforming), " +
+                          $"because turning further would make layers taller than {plan.Rule.HMax:G3} mm."
+                        : $"\nForce-aligned: turned less on {plan.Field.ReducedTurnFaces} faces to keep layers within {plan.Rule.HMax:G3} mm."
+                    : "");
         }
 
         private void Warn(PrintPlan plan)
@@ -254,6 +261,16 @@ namespace ClayBeso.GH.Components
             if (plan.TiltFlags > 0)
                 AddRuntimeMessage(GH_RuntimeMessageLevel.Warning,
                     $"{plan.TiltFlags} path points tilt more than {st.MaxTilt:G3}° along the path: a nozzle that cannot tilt may scrape.");
+            if (st.Method == LayerMethod.ForceAligned && plan.Field.TurnFraction < 0.5)
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Remark,
+                    $"Force-aligned turned the layers only {plan.Field.TurnFraction:P0} of the way towards the force: turning " +
+                    $"further would stretch layers past Max Layer Height ({plan.Rule.HMax:G3} mm). A larger Max Layer Height " +
+                    "(within 75% of the nozzle) gives it more room.");
+            if (plan.PoorContactFlags > 0)
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Warning,
+                    $"{plan.PoorContactFlags} path points have layers taller than {PrintPlan.PoorContactRatio:G2}× the wall: the beads " +
+                    "there barely overlap (contact < 20 %), so the layers bond poorly. Use shorter layers there (Proportional " +
+                    "mapping or a lower Max Layer Height) or a thicker wall. Show Realised Height to find them.");
             var err = plan.HeightError.Where(e => !double.IsNaN(e)).Select(Math.Abs).ToArray();
             if (err.Length > 0 && err.Average() > 0.15)
                 AddRuntimeMessage(GH_RuntimeMessageLevel.Warning,

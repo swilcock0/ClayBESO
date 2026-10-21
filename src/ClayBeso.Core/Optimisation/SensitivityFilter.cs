@@ -79,6 +79,25 @@ namespace ClayBeso.Optimisation
             _weight = wts.ToArray();
         }
 
+        /// <summary>
+        /// A filter radius that suits the mesh: <paramref name="edges"/> times the average edge length (in
+        /// the mesh's units). About 3 edges removes checkerboards and stair-steps while keeping detail, and
+        /// keeps the result about the same when the mesh is refined.
+        /// </summary>
+        public static double AutoRadius(TriMesh mesh, double edges = 3.0)
+        {
+            var seen = new HashSet<(int, int)>();
+            double sum = 0;
+            foreach (var f in mesh.Faces)
+                for (int k = 0; k < 3; k++)
+                {
+                    int a = f[k], b = f[(k + 1) % 3];
+                    if (!seen.Add(a < b ? (a, b) : (b, a))) continue;
+                    sum += (mesh.Vertices[a] - mesh.Vertices[b]).Length;
+                }
+            return seen.Count > 0 ? edges * sum / seen.Count : 0;
+        }
+
         public double[] Apply(double[] values)
         {
             int m = _start.Length - 1;

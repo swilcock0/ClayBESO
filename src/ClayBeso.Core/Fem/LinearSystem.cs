@@ -183,6 +183,43 @@ namespace ClayBeso.Fem
             return u;
         }
 
+        /// <summary>
+        /// Direct solve with the factorisation of the CURRENT matrix (factorises if needed), for repeated
+        /// solves with one matrix (eigenvalue iterations). Full-length vectors; fixed DOFs are ignored on the
+        /// way in and zero on the way out.
+        /// </summary>
+        public double[] SolveExact(double[] fullLoad)
+        {
+            if (!_factorCurrent)
+            {
+                Factor();
+                FactorisationCount++;
+            }
+            var b = new double[EquationCount];
+            for (int d = 0; d < _eq.Length; d++)
+                if (_eq[d] >= 0) b[_eq[d]] = fullLoad[d];
+            var x = new double[EquationCount];
+            _chol.Solve(b, x);
+            var u = new double[_eq.Length];
+            for (int d = 0; d < _eq.Length; d++)
+                if (_eq[d] >= 0) u[d] = x[_eq[d]];
+            return u;
+        }
+
+        /// <summary>y = K u for full-length vectors (fixed DOFs ignored, zero in the result).</summary>
+        public double[] MultiplyFull(double[] u)
+        {
+            var x = new double[EquationCount];
+            for (int d = 0; d < _eq.Length; d++)
+                if (_eq[d] >= 0) x[_eq[d]] = u[d];
+            var y = new double[EquationCount];
+            MultiplyK(x, y);
+            var r = new double[_eq.Length];
+            for (int d = 0; d < _eq.Length; d++)
+                if (_eq[d] >= 0) r[d] = y[_eq[d]];
+            return r;
+        }
+
         /// <summary>Preconditioned CG, warm-started from the previous solution. False if it did not converge.</summary>
         private bool Pcg(double[] b, double[] x)
         {

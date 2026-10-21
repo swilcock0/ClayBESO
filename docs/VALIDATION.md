@@ -16,10 +16,11 @@ numbers feed the validation tests (sections 5–7).
 | 5 | The shell FE model predicts deflection and stress of the finished shell | Shell Analysis | §5 |
 | 6 | A BESO-graded wall is stiffer than a uniform wall with the same clay | Shell BESO | §6 |
 | 7 | Printed non-planar layers follow the realised layer heights | Print Layers (Realised Height) | §7 |
+| 8 | Linear buckling, with a margin, predicts when a wet wall folds | Print Check / Shell Analysis (Buckling Factor) | §5 |
 
-Out of scope here: drying and firing shrinkage, creep, and stability during printing (the plugin
-analyses only the finished geometry). Buckling of wet walls is a known gap; §5 records collapse
-heights so a future buckling check can be validated against them.
+Out of scope here: drying and firing shrinkage, and creep. The plugin checks stability during
+printing with a linear buckling analysis of each print stage; §5 calibrates how far below that
+perfect-shape prediction real walls fold.
 
 Every result feeds back into the repo: measured values become component defaults or documented
 ranges in the README, and raw data goes in `docs/validation/` with the plugin version (git tag)
@@ -139,9 +140,14 @@ vase from `examples/TestVase.ghx`. All have 5 mm walls and 3 replicates.
 2. **Green, self-weight.** Scan each shell (photogrammetry or a structured-light scanner) right
    after printing and again after 30 and 60 min. Compare the sag and ovalisation with the Shell
    Analysis displacement field. Repeat at two print heights.
-3. **Collapse height (for the buckling gap).** Print the cylinder taller until it collapses, 3
-   times. Record the height and failure mode. No plugin check exists yet; these numbers are the
-   target for a future buckling check.
+3. **Collapse height (buckling knock-down).** Print the cylinder taller until it collapses, 3
+   times. Record the height, the time since the first layer, and the failure mode (folding/buckling
+   or crushing/sliding at the base). Then run Print Check on the same geometry and clay values with
+   enough stages that one lands near the collapse height, and read *Stage Buckling* there. The ratio
+   1 / (predicted factor at the collapse height) is the **knock-down** of your clay and printer: real
+   walls are never perfect, so they fold below the linear prediction. Repeat for a second wall
+   thickness. Replace the placeholder margin of 3 (`BucklingText.Margin`, used for the warnings) by
+   1 / knock-down with some safety on top.
 4. **Mesh check.** Run every specimen at 3 mesh densities and report the spread. The flat elements
    are slightly stiff on coarse meshes, so state the mesh used beside each comparison.
 
@@ -152,6 +158,9 @@ Pass criteria:
 - Failure starts within 20 mm of the predicted peak-stress or peak-interlayer-utilisation point.
 - Green self-weight displacements within ±30 %, given the scatter of green E. Record the time
   dependence rather than tuning E to fit.
+- Collapse height: the knock-down is consistent (±20 %) between replicates and between the two
+  wall thicknesses. If it isn't, the failure isn't elastic buckling (check the failure mode) and the
+  buckling factor should not be used as the collapse criterion for that clay.
 
 ## 6. Optimisation validation
 
@@ -249,7 +258,7 @@ model that has passed §5.
 | 2 | Water content, density, unconfined compression | 3 per batch × 4 times | Oven, balance, universal testing machine (UTM) with a 100 N–1 kN load cell, camera or DIC | Clay Material E, ν, ρ, f |
 | 3 | Straight walls, flow step | 36 walls + 2 | WASP 40100, calipers, camera | Flow constant, printable flow range |
 | 4 | Contact cuts, bending, shear, bearing | 5 per h/w × 4 × 4 tests | Saw, camera, UTM | η, contact law |
-| 5 | Rim load, self-weight scans, collapse height | 3 per shape × 3 shapes | UTM or load frame, transducer, strain gauges, 3D scanner | Shell Analysis |
+| 5 | Rim load, self-weight scans, collapse height | 3 per shape × 3 shapes | UTM or load frame, transducer, strain gauges, 3D scanner | Shell Analysis; buckling margin |
 | 6 | Uniform vs BESO pairs | 3 per variant × 3 | As §5 | Shell BESO |
 | 7 | Layer scans, cuts, tilt rings | 1 vase × 2 methods + rings | 3D scanner, saw | Print Layers |
 

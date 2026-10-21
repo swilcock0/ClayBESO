@@ -51,13 +51,13 @@ Every input and output of every component (type, default, units) is listed in
 
 | Tab | Component | What it does |
 |---|---|---|
-| 1 Model | **Clay Material** | E [MPa], ν, density [kg/m³], optional strength [MPa]. Defaults = green clay. |
+| 1 Model | **Material** | E [MPa], ν, density [kg/m³], optional strength [MPa]. Defaults = green clay; right-click for presets (Clay, Wood). |
 | 1 Model | **Shell Model** | Mesh + material + thickness [mm] + supports (auto base) + loads → model. |
 | 3 Optimise | **Shell BESO** | Live BESO loop (Run / Reset), thickness or void mode. Its **Design** output carries everything downstream. |
 | 4 Print | **Print Layers** | Design → layer heights, non-planar layer toolpaths, flow factor and overhang check, in one step. |
-| 2 Analyse | **Print Check** | Print → interlayer, stress and stage check of the finished piece and of the print in progress. |
+| 2 Analyse | **Print Check** | Print → interlayer, stress, stage and buckling check of the finished piece and of the print in progress. |
 | 4 Print | **Layer Rule** | Optional: how thickness becomes layer height. Give the same rule to BESO and it travels on in the Design. |
-| 2 Analyse | **Shell Analysis** | Optional: stress, displacement and force-flow lines of the starting shell (connect Shell Model) or the optimised one (connect BESO's Design). |
+| 2 Analyse | **Shell Analysis** | Optional: stress, displacement, force-flow lines and (Buckling on) the buckling factor and shape of the starting shell (connect Shell Model) or the optimised one (connect BESO's Design). |
 | 4 Print | **Wall Preview** | Optional: thickened solid wall for visual checking. |
 | 5 Help | **Help** | Double-click to open the component reference; shows the installed version. |
 
@@ -75,7 +75,7 @@ the same jobs with fewer connections.
 One straight chain, no wires going back up the canvas:
 
 ```
-Mesh ──► Shell Model ◄── Clay Material
+Mesh ──► Shell Model ◄── Material
               │
               ▼
          Shell BESO ◄── Layer Rule (optional)        Run = Boolean Toggle
@@ -100,8 +100,9 @@ true.
    default BESO keeps this amount of clay and only moves it around. *Fix Base* clamps everything
    at the lowest Z. Keep *Self-weight* on. Add point loads if needed (vectors in N).
 3. **Shell BESO**: set **tMin / tMax** to the thinnest and thickest wall you can print. The
-   starting thickness must lie between them, ideally near the middle. Set a **filter radius** of
-   about 2–3 mesh edge lengths, then switch **Run** on. *Converged* turns true when it's done;
+   starting thickness must lie between them, ideally near the middle. Leave **Filter Radius** at 0
+   (automatic: 3 mesh edge lengths, shown in *Info*), or set a larger one for smoother, more gradual
+   walls. Then switch **Run** on. *Converged* turns true when it's done;
    **Reset** starts again.
    - Leave **Volume Fraction** at 0 to redistribute the same clay (the usual case). Above 0 it
      changes the amount: the average wall becomes Vf × tMax. Void mode always needs one.
@@ -128,7 +129,7 @@ true.
    the wall comes out at the optimised thickness even where layers can't hit the target height.
    Structurally, the clay per unit of wall area is set by the **thickness**; a taller layer puts
    more clay down per pass and gives fewer layers.
-5. **Print Check**: connect **Print**, and give a clay **Strength** (here or on Clay Material).
+5. **Print Check**: connect **Print**, and give a clay **Strength** (here or on Material).
    It checks the finished piece under all loads and the print at N stages under self-weight, and
    reports the highest interlayer utilisation and the worst stage. *Show* and *Stage* choose what
    the preview colours and when; *Flow Lines* draws the force flow.
@@ -199,7 +200,7 @@ w − h wide. **Print Check** accounts for this:
    - **bearing**: compression on the narrowed strip vs **f**, which matters for wet clay carrying
      its own weight.
 
-Inputs: clay **strength f** (or set it on Clay Material) and **bond efficiency η**, the interface
+Inputs: clay **strength f** (or set it on Material) and **bond efficiency η**, the interface
 strength per unit contact area relative to the bulk clay. Leave η at 0 to use the design's (or 1),
 then calibrate it from tests (`docs/VALIDATION.md` §4). With *Orthotropic* on (the default), the
 wall is also weaker across its layers, so stresses redistribute as they would in the print. On a
@@ -246,7 +247,13 @@ overhang it is loaded in shear and layers slide.
   force, by at most **Max Deviation** (default 30°), and every layer stays a closed loop. Print
   Layers computes the force flow itself. In a test cylinder pushed sideways at the rim, the
   force-weighted interface angle dropped from 26° to 18°. Under pure self-weight the force is
-  vertical and the layers stay planar.
+  vertical and the layers stay planar. Turning closed layers pulls them apart in places, so the
+  turn gives way wherever a layer would get taller than the Layer Rule's **Max Layer Height**.
+  *Info* says how much of the turn was kept. If it's little, the targets are already at Max Layer
+  Height there: raise it (within 75 % of the nozzle) or use shorter target layers.
+- **Bead contact** (Print Layers). A layer as tall as the wall is wide barely touches the one
+  below. Points with layers taller than 0.8 × the wall (contact under 20 %) get a warning; Print
+  Check's interlayer utilisation will be high there.
 - **Print stages** (Print Check). Overhangs fail *during* printing. Print Check analyses the piece
   at N stages, each with only the layers printed so far loaded by their own weight, and picks out
   the worst one (*Stage* dropdown → *Worst print stage* to see it). Clay stiffness is taken as the
@@ -254,6 +261,23 @@ overhang it is loaded in shear and layers slide.
 
 The tests to calibrate Max Overhang and Max Tilt for your clay and printer are in
 `docs/VALIDATION.md` §7.
+
+## Buckling
+
+Wet clay walls usually fail by **buckling** (folding sideways) before the clay is over-stressed.
+Print Check runs a linear buckling analysis of the finished piece and of every print stage
+(**Buckling** input, on by default); Shell Analysis does it when you turn **Buckling** on.
+
+- **Buckling Factor**: how many times its loads the shell carries before it buckles. Print Check
+  gives the lowest one, finished piece or any stage; **Stage Buckling** lists it per stage (for a
+  stage, how many times heavier the clay could be before that stage folds). Below 1 = buckles.
+- **Show → Buckling mode** draws the buckling shape. Its size is arbitrary: with Deform Scale 10
+  the largest movement is drawn at 5 % of the model size.
+- The analysis assumes a **perfect** shape. Real walls buckle well below it, so the plugin flags
+  factors below 3 as at risk. That margin is a placeholder: measure your clay's knock-down with
+  the collapse-height test in `docs/VALIDATION.md` §5.
+- A thicker or more curved wall, a stiffer (drier) clay, or a lower print raise the factor. A thicker
+  wall raises it most: bending stiffness grows with t³.
 
 ## Units
 
@@ -268,7 +292,7 @@ height and bead width are always in millimetres**, forces in **newtons**, stress
 | Leather hard | 10–50 | ~1900 | |
 | Fired | 10 000–30 000 | 2000–2400 | |
 
-**Strength** (Clay Material, default **0.03 MPa**) is a cautious placeholder for soft printing clay.
+**Strength** (Material, default **0.03 MPa**) is a cautious placeholder for soft printing clay.
 Printing clays read about 0.6–1.3 kg/cm² on a pocket penetrometer (Friedman-Gerlicz et al. 2024),
 which is an unconfined compressive strength of 0.06–0.13 MPa. Interfaces fail in shear and tension,
 which are weaker, so the default is about half the softer value. Measure your own clay: reading
@@ -281,9 +305,9 @@ optimised *shape* does not depend on it. It matters for checking deflections and
 
 ## Limitations — read before trusting results
 
-- Linear elastic, small-displacement analysis of the **finished** geometry. The plugin does not
-  simulate the print layer by layer, and it does not check **buckling**, which is often what
-  makes wet clay walls fail.
+- Linear elastic, small-displacement analysis. Print stages are analysed separately, but the clay
+  is equally stiff at every height (no ageing). **Buckling** is a linear (perfect-shape) prediction:
+  real walls fold below it, see *Buckling* above.
 - Flat triangular elements converge from the stiff side on curved shells. Use fine meshes
   (≥ 40 divisions around a vase).
 - Void mode may stop at the iteration limit without converging. Holes interrupt continuous

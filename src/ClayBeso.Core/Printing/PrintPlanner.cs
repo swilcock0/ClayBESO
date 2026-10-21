@@ -63,6 +63,16 @@ namespace ClayBeso.Printing
         public int TiltFlags => Overhangs.Sum(o => o.Tilt.Count(x => x > Settings.MaxTilt));
         public int RatioFlags => Overhangs.Sum(o => o.Ratio.Count(x => x > 0.5));
         public int PointCount => Paths.Sum(p => p.Points.Count);
+
+        /// <summary>
+        /// Path points whose layer is taller than <see cref="PoorContactRatio"/> times the bead width: the
+        /// bead overlaps the one below by less than 20 % of its width, so the layers barely bond.
+        /// </summary>
+        public int PoorContactFlags => Paths.Sum(p =>
+            Enumerable.Range(0, p.Points.Count).Count(i => p.RealisedHeight[i] > PoorContactRatio * p.Width[i]));
+
+        /// <summary>Realised layer height / bead width above which a point is flagged (contact c below 0.2).</summary>
+        public const double PoorContactRatio = 0.8;
     }
 
     /// <summary>
@@ -106,7 +116,7 @@ namespace ClayBeso.Printing
             }
 
             var field = LayerField.Compute(mesh, h, bottom, top, up, settings.Vertical, settings.Method,
-                flowVectors, settings.MaxDeviation);
+                flowVectors, settings.MaxDeviation, maxHeight: r.HMax);
             var paths = LayerSlicer.Slice(field, tv, up, settings.Seam);
             var overhangs = paths.Select(p => OverhangCheck.Evaluate(p, up, settings.Vertical)).ToList();
 

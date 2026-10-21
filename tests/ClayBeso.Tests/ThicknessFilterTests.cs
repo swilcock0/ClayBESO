@@ -31,6 +31,19 @@ public class ThicknessFilterTests
         }
     }
 
+    [Fact]
+    public void AutomaticFilterRadiusIsThreeAverageEdges()
+    {
+        // 10 x 10 unit squares, each split by one diagonal: 220 unit edges and 100 diagonals of sqrt 2.
+        var mesh = TestMeshes.Grid(10, 10, (u, v) => new Geometry.Vec3(10 * u, 10 * v, 0));
+        double mean = (220 + 100 * Math.Sqrt(2)) / 320;
+        Assert.Equal(3 * mean, SensitivityFilter.AutoRadius(mesh), 12);
+
+        // A finer mesh of the same surface gets a proportionally smaller radius.
+        var fine = TestMeshes.Grid(20, 20, (u, v) => new Geometry.Vec3(10 * u, 10 * v, 0));
+        Assert.Equal(0.5, SensitivityFilter.AutoRadius(fine) / SensitivityFilter.AutoRadius(mesh), 2);
+    }
+
     private static double LargeNeighbourJump(ShellModel model, double[] t)
     {
         var faces = model.Mesh.Faces;

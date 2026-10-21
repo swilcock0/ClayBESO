@@ -239,6 +239,23 @@ rim-pinned least-squares fit as before. Each layer therefore stays closed, and i
 follows h. This is Vele, Kurilla & Achten's "layers perpendicular to the force-flow lines, limited
 by α", extended from 2D walls to 3D shells.
 
+**Height limit.** A turned direction field is not the gradient of anything (it curls), so the
+least-squares fit spreads the layers apart in places. Closed layers can't all turn without some
+spreading. On the example vase (thin BESO walls, linear-inverse layers) the unlimited field made
+layers up to 7.1 mm tall on 3.5 mm walls, leaving the beads almost no contact. Print Layers therefore
+passes the Layer Rule's hMax, and the turn gives way where a face's realised height would exceed
+`1.02 × max(hMax, h_conforming)` (conforming layers that are already taller can't be helped by
+turning):
+1. up to 6 rounds of halving the turn on the faces that are too tall (and ×0.75 on their
+   neighbours), blending each face's direction between d0 and the turned one;
+2. if faces are still too tall, one common fraction of the turn for all faces, found by 6
+   bisection steps. A fraction of 0 is the conforming field, which always satisfies the limit.
+
+Print Layers reports the fraction kept. Tested (`ForceAlignedLayersStayWithinTheMaxLayerHeight`):
+on the example vase the tallest layer drops from 7.1 to 3.2 mm (the conforming value), and the
+interlayer utilisation from about 19 to 0.6. In the lateral-load cylinder, where the targets leave
+room under hMax, the full turn is kept (no limit is applied when `maxHeight` is 0).
+
 ## 11. Print stages
 
 Stage k keeps the faces with φ ≤ k at all three corners, renumbers them into a new shell with the
@@ -247,7 +264,50 @@ option, κ = η·c uses each face's realised layer height. The interlayer check 
 stage. Results map back to the full mesh (NaN or zero where not yet printed). Tested: the last
 stage equals the full model; a half-height stage equals a half-height cylinder built directly
 (displacement to 12 digits). Not modelled yet: the stiffening of clay with time (younger layers are
-softer), and buckling.
+softer). With Buckling on, each stage also gets a linear buckling analysis (§12).
+
+## 12. Linear buckling
+
+A linear analysis gives the membrane forces N = (Nx, Ny, Nxy) per face (tension positive). Compression
+softens a wall against sideways movement; this is the geometric stiffness Kg. The shell buckles at
+the smallest load factor λ for which
+
+    (K + λ Kg) φ = 0,
+
+where φ is the buckling shape. λ multiplies all loads together (self-weight and point loads); λ < 1
+means the shell buckles under the loads as given.
+
+**Element Kg** (`Fem/Buckling.cs`). The classic flat-shell form with linear interpolation of the three
+translations: for nodes a, b of a triangle with area A and shape-function gradients ∇N_a (constant),
+
+    Kg_ab = A · ∇N_aᵀ [Nx Nxy; Nxy Ny] ∇N_b · I₃.
+
+The 3×3 identity means the same block acts on x, y and z, so it is the same in local and global axes
+(no rotation needed). Rows sum to zero, so rigid translations cause no force.
+
+**Eigen solver.** With M = −Kg the problem is M φ = μ K φ with μ = 1/λ: the smallest positive λ is the
+largest positive μ. K is positive definite; M is indefinite, because shells usually have tension
+somewhere too. Restarted Lanczos on K⁻¹M (symmetric in the K inner product), with full
+re-orthogonalisation, one Cholesky solve per step reusing the factor of the static analysis. It
+stops when the eigen-residual |β sₘ| of the wanted Ritz values is below 10⁻⁵·μ. Lanczos was chosen
+over subspace iteration because shells have many buckling loads close together (a cylinder has
+dozens within a few %): on the cylinder benchmark subspace iteration was still creeping down after
+40 iterations (7 s), while Lanczos converged in 30 solves (1.3 s).
+
+**Tests** (`BucklingTests`):
+- Clamped–free strip under an end load against Euler, P = π²EI/(4L²): within 0.01 %.
+- The same strip under its own weight against Greenhill, (qL³)cr = 7.837 EI: within 0.01 %.
+- An axially compressed cylinder (R/t = 50, clamped base, top held round) against the classical
+  value σ = E t / (R √(3(1−ν²))): 0.98 of it. The clamped ends and the discretisation account for
+  the difference.
+- A strip in tension has no positive λ (reported as "none"). λ scales as 1/load.
+- Print stages: λ falls as a self-weight cylinder grows, and the last stage equals the finished piece.
+
+**What it means for clay.** Linear buckling assumes a perfect shape and small deflections up to
+buckling. Thin shells, and soft, imperfect wet clay walls especially, fold well below it. Cylinders in
+compression are the extreme case, with test loads far below the classical value (the reason for the
+knock-down factors in NASA SP-8007). The plugin flags factors below 3 as at risk, a placeholder until
+`docs/VALIDATION.md` §5 gives a measured knock-down for the clay and printer.
 
 ## References
 
@@ -255,6 +315,9 @@ softer), and buckling.
 - Huang, Xie (2007). Convergent and mesh-independent solutions for the BESO method. FEAD 43.
 - Huang, Xie (2010). *Evolutionary Topology Optimization of Continuum Structures*. Wiley.
 - Huang, Xie (2011). ETO of continuum structures including design-dependent self-weight loads. FEAD 47.
+- NASA SP-8007 (1968, rev. 2020). Buckling of thin-walled circular cylinders.
+- Timoshenko, Gere (1961). *Theory of Elastic Stability*, 2nd ed. McGraw-Hill (Euler, Greenhill, cylinders).
+- Bathe (2014). *Finite Element Procedures*, 2nd ed. (geometric stiffness, Lanczos and subspace iteration).
 - Kimmel, Sethian (1998). Computing geodesic paths on manifolds. PNAS 95.
 - Scordelis, Lo (1964); MacNeal, Harder (1985) — standard shell benchmarks.
 - Vele, Kurilla, Achten (2023). Improving buildability of overhangs of 3D printed objects through non-planar slicing informed by force flow analysis. eCAADe 41, vol. 1, 519–526.

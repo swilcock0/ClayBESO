@@ -37,4 +37,21 @@ internal static class TestMeshes
             return new Vec3(r * Math.Cos(th), r * Math.Sin(th), z);
         }, closedU: true);
     }
+
+    /// <summary>
+    /// The example vase (examples/TestVase.ghx, in mm): three ellipses lofted, 10 x 20 at the base,
+    /// 60 x 10 at z = 32 and 10 x 20 at z = 60.8. The loft is approximated by quadratic interpolation
+    /// of the radii. A flat, strongly overhanging shape.
+    /// </summary>
+    public static TriMesh EllipseLoftVase(int nAround = 40, int nUp = 40)
+    {
+        double h = 60.8, s1 = 32 / 60.8;
+        double Lagrange(double s, double f0, double f1, double f2) =>
+            f0 * (s - s1) * (s - 1) / (s1 * 1) + f1 * s * (s - 1) / (s1 * (s1 - 1)) + f2 * s * (s - s1) / (1 - s1);
+        return Grid(nAround, nUp, (u, v) =>
+        {
+            double t = 2 * Math.PI * u;
+            return new Vec3(Lagrange(v, 10, 60, 10) * Math.Cos(t), Lagrange(v, 20, 10, 20) * Math.Sin(t), h * v);
+        }, closedU: true);
+    }
 }

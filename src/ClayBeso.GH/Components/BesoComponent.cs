@@ -19,6 +19,7 @@ namespace ClayBeso.GH.Components
         private BesoOptimizer _opt;
         private ShellModel _model;
         private string _signature;
+        private bool _radiusAuto;
         private string _error;
 
         public BesoComponent()
@@ -49,7 +50,7 @@ namespace ClayBeso.GH.Components
             p.AddIntegerParameter("Mode", "Mode", "0 = Thickness (graded wall), 1 = Void (perforations). A dropdown appears when you place the component.", GH_ParamAccess.item, 0);
             p.AddNumberParameter("Min Thickness", "Min Thickness", "Thickness mode: thinnest printable wall [mm] (about 1.1x nozzle diameter).", GH_ParamAccess.item, 3.5);
             p.AddNumberParameter("Max Thickness", "Max Thickness", "Thickness mode: thickest wall [mm] (widest bead you can extrude, about 2.3x nozzle).", GH_ParamAccess.item, 7.0);
-            p.AddNumberParameter("Filter Radius", "Filter Radius", "Filter radius in document units. In thickness mode the wall thickness is averaged over this radius, so it sets how wide the transitions between thin and thick wall are (no stair-steps between faces). Use at least 2-3× the mesh edge length; larger = smoother, more gradual walls.", GH_ParamAccess.item, 10.0);
+            p.AddNumberParameter("Filter Radius", "Filter Radius", "Filter radius in document units. 0 (default) = automatic: 3× the average mesh edge length (Info shows the value used). In thickness mode the wall thickness is averaged over this radius, so it sets how wide the transitions between thin and thick wall are (no stair-steps between faces). Use at least 2-3× the mesh edge length; larger = smoother, more gradual walls.", GH_ParamAccess.item, 0.0);
             p.AddGenericParameter("Layer Rule", "Layer Rule", "Optional Layer Rule. When connected, the wall is weaker across its layers: across-layer stiffness × κ = η·(t − h)/t, with h from the rule. The rule travels on in the Design output.", GH_ParamAccess.item);
             p.AddNumberParameter("Bond Efficiency", "η", "With a Layer Rule: interface efficiency 0-1 (calibrate from tests, see docs/VALIDATION.md §4). 1 = only the contact geometry weakens the wall.", GH_ParamAccess.item, 1.0);
             p.AddNumberParameter("Volume Fraction", "Vf", "Thickness mode: 0 (default) = keep the clay volume of the Shell Model thickness and only redistribute it. " +
@@ -83,7 +84,7 @@ namespace ClayBeso.GH.Components
         {
             object modelObj = null;
             int mode = 0, maxIt = 100;
-            double vf = 0.0, tMin = 3.5, tMax = 7, er = 0.03, radius = 10, pen = 3, ar = 0.02;
+            double vf = 0.0, tMin = 3.5, tMax = 7, er = 0.03, radius = 0, pen = 3, ar = 0.02;
             bool run = false, reset = false;
             if (!da.GetData(In("Model"), ref modelObj)) return;
             da.GetData(In("Mode"), ref mode);
@@ -111,6 +112,9 @@ namespace ClayBeso.GH.Components
             var model = RhinoConvert.Unwrap<ShellModel>(modelObj);
             if (model == null) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Input is not a Shell Model."); return; }
 
+            // Radius in mm: given in document units, or automatic from the mesh (already in mm).
+            _radiusAuto = radius <= 0;
+            double radiusMm = radius > 0 ? radius * model.UnitScale : SensitivityFilter.AutoRadius(model.Mesh);
             var settings = new BesoSettings
             {
                 Mode = mode == 1 ? BesoMode.Void : BesoMode.Thickness,
@@ -118,7 +122,7 @@ namespace ClayBeso.GH.Components
                 MinThickness = tMin,
                 MaxThickness = tMax,
                 EvolutionRate = er,
-                FilterRadius = radius * model.UnitScale,
+                FilterRadius = radiusMm,
                 MaxIterations = maxIt,
                 Penalty = pen,
                 MaxAdmissionRatio = ar,
@@ -211,7 +215,9 @@ namespace ClayBeso.GH.Components
                     ? $"Redistributing the starting clay: average wall {_opt.TargetAverageThickness:F2} mm\n"
                     : $"Volume fraction {_opt.CurrentVolumeFraction:F3} (target {_opt.Settings.VolumeFraction:F3}" +
                       (_opt.Settings.Mode == BesoMode.Thickness ? $" = average wall {_opt.TargetAverageThickness:F2} mm)\n" : ")\n")) +
-                $"Compliance {c}\nThickness {thickness.Where(t => t > 0).DefaultIfEmpty(0).Min():F2}-{thickness.Max():F2} mm" +
+                $"Compliance {c}\nFilter radius {_opt.Settings.FilterRadius / _model.UnitScale:G3} (document units)" +
+                (_radiusAuto ? ", automatic\n" : "\n") +
+                $"Thickness {thickness.Where(t => t > 0).DefaultIfEmpty(0).Min():F2}-{thickness.Max():F2} mm" +
                 (_opt.Iteration > 0 ? $"\nLast solve: {_opt.Solver.LastTimings.Total:F0} ms ({_opt.Solver.LastTimings})" : "") +
                 LayerInfo(design, solid));
         }

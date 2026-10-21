@@ -14,7 +14,7 @@ mesh output by Shell Model; per-vertex lists follow its vertices.
 Inputs in **bold** must be connected. The others have a default (shown) or are optional. New inputs
 are only ever added at the end, so saved definitions keep working.
 
-- **1 Model**: [Clay Material](#clay-material), [Shell Model](#shell-model)
+- **1 Model**: [Material](#material), [Shell Model](#shell-model)
 - **2 Analyse**: [Print Check](#print-check), [Shell Analysis](#shell-analysis)
 - **3 Optimise**: [Shell BESO](#shell-beso)
 - **4 Print**: [Layer Rule](#layer-rule), [Print Layers](#print-layers), [Wall Preview](#wall-preview)
@@ -23,26 +23,26 @@ are only ever added at the end, so saved definitions keep working.
 
 ## 1 Model
 
-### Clay Material
+### Material
 
-Nickname `Clay` · source `src/ClayBeso.GH/Components/ClayMaterialComponent.cs`
+Nickname `Material` · source `src/ClayBeso.GH/Components/ClayMaterialComponent.cs`
 
-Linear-elastic material for the shell analysis. Defaults are for green (wet) clay, the state that governs self-weight collapse while printing.
+Linear-elastic, isotropic material for the shell analysis. Right-click for presets (Clay, Wood), which fill in the text boxes connected to the inputs. Defaults are for green (wet) clay, the state that governs self-weight collapse while printing.
 
 **Inputs**
 
 | # | Name | Nick | Type | Access | Default | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| 0 | Young's Modulus | `Modulus` | Number | item | `1.0` | Young's modulus [MPa]. Green clay ~0.1-5 MPa, leather-hard ~10-50 MPa, fired ~10 000-30 000 MPa. |
+| 0 | Young's Modulus | `Modulus` | Number | item | `1.0` | Young's modulus [MPa]. Green clay ~0.1-5 MPa, leather-hard ~10-50 MPa, fired ~10 000-30 000 MPa; softwood along the grain ~11 000 MPa (preset Wood). |
 | 1 | Poisson | `ν` | Number | item | `0.35` | Poisson's ratio [-], 0 to <0.5. |
-| 2 | Density | `Density` | Number | item | `1900` | Density [kg/m³]. |
-| 3 | Strength | `Strength` | Number | item | `0.03` | Clay strength f [MPa] for the interlayer and utilisation checks. Default 0.03 MPa is a cautious PLACEHOLDER for soft printing clay: about half the unconfined compressive strength printing clays show on a pocket penetrometer (0.6-1.3 kg/cm² = 0.06-0.13 MPa, Friedman-Gerlicz et al. 2024), because interfaces fail in shear and tension. Measure your own clay: penetrometer reading [kg/cm²] × 0.098 = MPa, then halve it (docs/VALIDATION.md §2). 0 = no strength checks. |
+| 2 | Density | `Density` | Number | item | `1900` | Density [kg/m³]. Clay ~1900, softwood ~420. |
+| 3 | Strength | `Strength` | Number | item | `0.03` | Strength f [MPa] for the interlayer and utilisation checks. Default 0.03 MPa is a cautious PLACEHOLDER for soft printing clay: about half the unconfined compressive strength printing clays show on a pocket penetrometer (0.6-1.3 kg/cm² = 0.06-0.13 MPa, Friedman-Gerlicz et al. 2024), because interfaces fail in shear and tension. Measure your own clay: penetrometer reading [kg/cm²] × 0.098 = MPa, then halve it (docs/VALIDATION.md §2). The Wood preset uses 4 MPa (C24 shear strength). 0 = no strength checks. |
 
 **Outputs**
 
 | # | Name | Nick | Type | Access | Description |
 | --- | --- | --- | --- | --- | --- |
-| 0 | Material | `Material` | Generic | item | Clay material. |
+| 0 | Material | `Material` | Generic | item | Material for Shell Model. |
 
 ### Shell Model
 
@@ -55,7 +55,7 @@ Build a shell analysis model from a mesh of the mid-surface (e.g. a vase). Quads
 | # | Name | Nick | Type | Access | Default | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | **Mesh** | `Mesh` | Mesh | item | required | Mid-surface mesh of the shell, in document units. |
-| 1 | Material | `Material` | Generic | item | optional | Clay Material. Default: green clay (E = 1 MPa, strength 0.03 MPa placeholder). |
+| 1 | Material | `Material` | Generic | item | optional | Material. Default: green clay (E = 1 MPa, strength 0.03 MPa placeholder). |
 | 2 | Thickness | `Thickness` | Number | list | `5.0` | Wall thickness [mm]: one value, or one per mesh face (after triangulation). |
 | 3 | Fix Base | `Base` | Boolean | item | `true` | Clamp every vertex within the tolerance of the lowest Z (the print bed). |
 | 4 | Supports | `Supports` | Point | list | optional | Extra support points (snapped to the nearest vertex). |
@@ -82,7 +82,7 @@ Build a shell analysis model from a mesh of the mid-surface (e.g. a vase). Quads
 
 Nickname `Check` · source `src/ClayBeso.GH/Components/PrintCheckComponent.cs`
 
-Structural check of a print, in one place: the finished piece under all loads, and the piece while it is printed (stages loaded by their own weight). Layer interfaces carry force only through their bonded strip c = (w - h)/w, and the wall is weaker across the layers.
+Structural check of a print, in one place: the finished piece under all loads, and the piece while it is printed (stages loaded by their own weight). Layer interfaces carry force only through their bonded strip c = (w - h)/w, and the wall is weaker across the layers. With Buckling on, it also finds how many times its loads each stage carries before the wall buckles.
 
 Connect the Print output of Print Layers. Pick what to see with Show, and when with Stage.
 
@@ -91,8 +91,8 @@ Connect the Print output of Print Layers. Pick what to see with Show, and when w
 | # | Name | Nick | Type | Access | Default | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | **Print** | `Print` | Generic | item | required | Print output of Print Layers. |
-| 1 | Strength | `Strength` | Number | item | `0.0` | Clay strength [MPa] for the interlayer utilisation. 0 = the Clay Material strength; if that is 0 too, utilisation isn't reported. |
-| 2 | Show | `Show` | Integer | item | `0` | 0 = interlayer utilisation, 1 = interface angle, 2 = von Mises, 3 = displacement, 4 = layer contact (dropdown appears when placed). |
+| 1 | Strength | `Strength` | Number | item | `0.0` | Clay strength [MPa] for the interlayer utilisation. 0 = the Material strength; if that is 0 too, utilisation isn't reported. |
+| 2 | Show | `Show` | Integer | item | `0` | 0 = interlayer utilisation, 1 = interface angle, 2 = von Mises, 3 = displacement, 4 = layer contact, 5 = buckling mode (needs Buckling on; dropdown appears when placed). |
 | 3 | Stage | `Stage` | Integer | item | `-1` | -1 = finished piece, -2 = worst print stage, 0..N-1 = that stage (dropdown appears when placed; use a slider for a specific stage). |
 | 4 | Stages | `Stages` | Integer | item | `8` | Print stages to check (0 = finished piece only). |
 | 5 | Bond Efficiency | `η` | Number | item | `0.0` | Interface efficiency 0-1 (calibrate with docs/VALIDATION.md section 4). 0 = the design's, or 1. |
@@ -101,6 +101,7 @@ Connect the Print output of Print Layers. Pick what to see with Show, and when w
 | 8 | Deform Scale | `DS` | Number | item | `10.0` | Displacement exaggeration for the preview. |
 | 9 | Colour Range | `CR` | Interval | item | optional | Fix the preview colour scale. Empty = automatic for what is shown. |
 | 10 | Legend | `Lg` | Boolean | item | `true` | Draw a colour legend in the viewport. |
+| 11 | Buckling | `Buckling` | Boolean | item | `true` | Linear buckling analysis of the finished piece and of every print stage (takes longer). Turn off while BESO is running if it slows things down. |
 
 **Outputs**
 
@@ -116,12 +117,14 @@ Connect the Print output of Print Layers. Pick what to see with Show, and when w
 | 7 | Stage Utilisation | `Us` | Number | list | Per stage: highest interlayer utilisation (von Mises [MPa] without a strength). |
 | 8 | Force Flow | `FF` | Vector | list | Per face, finished piece: dominant principal force direction; length 0-1 = how directional. |
 | 9 | Flow Lines | `FL` | Line | list | Finished piece: a short line per face along the force flow, for viewing. |
+| 10 | Buckling Factor | `Buckling Factor` | Number | item | Lowest buckling load factor [-], finished piece or any stage: the loads times this make a perfect shell buckle. < 1 = buckles; real walls buckle well below it, so aim higher (see Info). Infinity = nothing in compression. |
+| 11 | Stage Buckling | `λs` | Number | list | Per stage: buckling load factor under its own weight [-] (how many times heavier the clay could be before that stage buckles). |
 
 ### Shell Analysis
 
 Nickname `Analyse` · source `src/ClayBeso.GH/Components/ShellAnalysisComponent.cs`
 
-Linear static analysis of a shell: stresses, displacements and force flow.
+Linear static analysis of a shell: stresses, displacements and force flow, and optionally linear buckling (how many times the loads the shell carries before it buckles).
 
 Connect a Shell Model to check the starting shell, or the Design output of Shell BESO to check the optimised one (its thickness, Layer Rule and bond come with it).
 
@@ -130,13 +133,14 @@ Connect a Shell Model to check the starting shell, or the Design output of Shell
 | # | Name | Nick | Type | Access | Default | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | **Model** | `Model` | Generic | item | required | Shell Model (starting shell) or the Design output of Shell BESO (optimised shell). |
-| 1 | Show | `Show` | Integer | item | `0` | Preview colours: 0 = von Mises stress, 1 = displacement (a dropdown appears when you place the component). |
+| 1 | Show | `Show` | Integer | item | `0` | Preview colours: 0 = von Mises stress, 1 = displacement, 2 = buckling mode (turns Buckling on) (a dropdown appears when you place the component). |
 | 2 | Thickness | `Thickness` | Number | list | optional | Optional thickness per face [mm], replacing the model's or design's. |
 | 3 | Layer Rule | `Layer Rule` | Generic | item | optional | Optional Layer Rule: analyse the wall as weaker across its layers (κ = η·(t − h)/t). Default: the design's rule, if any. |
 | 4 | Bond Efficiency | `η` | Number | item | `0.0` | With a Layer Rule: interface efficiency 0-1. 0 = the design's, or 1. |
 | 5 | Deform Scale | `DS` | Number | item | `10.0` | Displacement exaggeration for the preview mesh. |
 | 6 | Colour Range | `CR` | Interval | item | optional | Fix the colour scale (MPa for stress, mm for displacement). Empty = min-max of the result. |
 | 7 | Legend | `Lg` | Boolean | item | `true` | Draw a colour legend in the viewport. |
+| 8 | Buckling | `Buckling` | Boolean | item | `false` | Also run a linear buckling analysis (takes longer; off by default so a running BESO isn't slowed down). |
 
 **Outputs**
 
@@ -147,11 +151,13 @@ Connect a Shell Model to check the starting shell, or the Design output of Shell
 | 2 | Max Displacement | `Max Displacement` | Number | item | Largest displacement [mm]. |
 | 3 | Von Mises | `Von Mises` | Number | list | Von Mises stress per face, worst of the two surfaces [MPa]. |
 | 4 | Displacements | `d` | Vector | list | Displacement per vertex [mm]. |
-| 5 | Utilisation | `U` | Number | list | σ / strength per face (Strength on the Clay Material). |
+| 5 | Utilisation | `U` | Number | list | σ / strength per face (Strength on the Material component). |
 | 6 | Compliance | `C` | Number | item | Compliance F·u [N·mm]. Lower = stiffer. |
 | 7 | Max Stress Point | `σMax` | Point | item | Centre of the face with the highest von Mises stress. |
 | 8 | Force Flow | `FF` | Vector | list | Per face: direction of the dominant principal in-plane force; length 0-1 = how directional it is. |
 | 9 | Flow Lines | `FL` | Line | list | A short line per face along the force flow, for viewing force-flow trajectories. |
+| 10 | Buckling Factor | `Buckling Factor` | Number | item | With Buckling on: lowest buckling load factor [-]. The loads (self-weight and point loads) times this make a perfect shell buckle; < 1 = buckles. Infinity = nothing in compression. |
+| 11 | Buckling Mode | `φ` | Vector | list | With Buckling on: buckling shape per vertex, scaled so the largest movement is 1 (no units). |
 
 ## 3 Optimise
 
@@ -179,7 +185,7 @@ Connect the Design output to Print Layers (and to Shell Analysis to analyse the 
 | 3 | Mode | `Mode` | Integer | item | `0` | 0 = Thickness (graded wall), 1 = Void (perforations). A dropdown appears when you place the component. |
 | 4 | Min Thickness | `Min Thickness` | Number | item | `3.5` | Thickness mode: thinnest printable wall [mm] (about 1.1x nozzle diameter). |
 | 5 | Max Thickness | `Max Thickness` | Number | item | `7.0` | Thickness mode: thickest wall [mm] (widest bead you can extrude, about 2.3x nozzle). |
-| 6 | Filter Radius | `Filter Radius` | Number | item | `10.0` | Filter radius in document units. In thickness mode the wall thickness is averaged over this radius, so it sets how wide the transitions between thin and thick wall are (no stair-steps between faces). Use at least 2-3× the mesh edge length; larger = smoother, more gradual walls. |
+| 6 | Filter Radius | `Filter Radius` | Number | item | `0.0` | Filter radius in document units. 0 (default) = automatic: 3× the average mesh edge length (Info shows the value used). In thickness mode the wall thickness is averaged over this radius, so it sets how wide the transitions between thin and thick wall are (no stair-steps between faces). Use at least 2-3× the mesh edge length; larger = smoother, more gradual walls. |
 | 7 | Layer Rule | `Layer Rule` | Generic | item | optional | Optional Layer Rule. When connected, the wall is weaker across its layers: across-layer stiffness × κ = η·(t − h)/t, with h from the rule. The rule travels on in the Design output. |
 | 8 | Bond Efficiency | `η` | Number | item | `1.0` | With a Layer Rule: interface efficiency 0-1 (calibrate from tests, see docs/VALIDATION.md §4). 1 = only the contact geometry weakens the wall. |
 | 9 | Volume Fraction | `Vf` | Number | item | `0.0` | Thickness mode: 0 (default) = keep the clay volume of the Shell Model thickness and only redistribute it. A value > 0 sets a different target: average thickness = Vf × tMax (must be above tMin/tMax). Void mode: fraction of the full wall to keep (required). |
@@ -344,7 +350,7 @@ Utilisation = worst of bond failure (tension + shear vs η·f) and bearing of th
 | 1 | Thickness | `t` | Number | list | optional | Wall thickness per face [mm] (e.g. from Shell BESO). Default: the model's thickness. |
 | 2 | **Layer Field** | `φ` | Number | list | required | Layer field per vertex, from the Layer Field output of Non-planar Layers. |
 | 3 | Vertical | `Vz` | Boolean | item | `true` | Same setting as on Non-planar Layers (layer height measured in Z). |
-| 4 | Strength | `f` | Number | item | `0.0` | Bulk clay strength [MPa]. 0 = use the Strength of the Clay Material. |
+| 4 | Strength | `f` | Number | item | `0.0` | Bulk clay strength [MPa]. 0 = use the Strength of the Material. |
 | 5 | Bond Efficiency | `η` | Number | item | `1.0` | Interface strength per unit contact area relative to the bulk (0-1). Calibrate from tests; 1 = only the contact geometry weakens the interface. |
 | 6 | Min Contact | `cMin` | Number | item | `0.05` | Lower bound on the contact fraction (a round bead still touches over a small strip). |
 | 7 | Colour Range | `CR` | Interval | item | optional | Fix the utilisation colour scale. Empty = 0 to the maximum (or 1 if lower). |
@@ -483,7 +489,7 @@ With a clay strength, each stage also gets the interlayer check, and the worst s
 | 3 | Stages | `N` | Integer | item | `10` | Number of stages, evenly spaced in layers up to the last one. |
 | 4 | Show Stage | `Show` | Integer | item | `-1` | Stage shown in the preview: 0 = first ... N-1 = finished piece; -1 = the worst stage. |
 | 5 | Vertical | `Vz` | Boolean | item | `true` | Same setting as on Non-planar Layers (layer height measured in Z). |
-| 6 | Strength | `f` | Number | item | `0.0` | Clay strength [MPa] for the interlayer check at each stage. 0 = use the Clay Material strength; if that is 0 too, the check is skipped. |
+| 6 | Strength | `f` | Number | item | `0.0` | Clay strength [MPa] for the interlayer check at each stage. 0 = use the Material strength; if that is 0 too, the check is skipped. |
 | 7 | Bond Efficiency | `η` | Number | item | `1.0` | Interface efficiency 0-1 (see Interlayer Check). |
 | 8 | Orthotropic | `Orth` | Boolean | item | `true` | Treat the wall as weaker across its layers (stiffness × η·c from the realised layer heights). |
 | 9 | Point Loads | `PL` | Boolean | item | `false` | Also apply the model's point loads at every stage (normally they act only on the finished piece). |

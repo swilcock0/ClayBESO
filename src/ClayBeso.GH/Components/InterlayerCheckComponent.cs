@@ -32,7 +32,7 @@ namespace ClayBeso.GH.Components
             p.AddNumberParameter("Thickness", "t", "Wall thickness per face [mm] (e.g. from Shell BESO). Default: the model's thickness.", GH_ParamAccess.list);
             p.AddNumberParameter("Layer Field", "φ", "Layer field per vertex, from the Layer Field output of Non-planar Layers.", GH_ParamAccess.list);
             p.AddBooleanParameter("Vertical", "Vz", "Same setting as on Non-planar Layers (layer height measured in Z).", GH_ParamAccess.item, true);
-            p.AddNumberParameter("Strength", "f", "Bulk clay strength [MPa]. 0 = use the Strength of the Clay Material.", GH_ParamAccess.item, 0.0);
+            p.AddNumberParameter("Strength", "f", "Bulk clay strength [MPa]. 0 = use the Strength of the Material.", GH_ParamAccess.item, 0.0);
             p.AddNumberParameter("Bond Efficiency", "η", "Interface strength per unit contact area relative to the bulk (0-1). Calibrate from tests; 1 = only the contact geometry weakens the interface.", GH_ParamAccess.item, 1.0);
             p.AddNumberParameter("Min Contact", "cMin", "Lower bound on the contact fraction (a round bead still touches over a small strip).", GH_ParamAccess.item, 0.05);
             p.AddIntervalParameter("Colour Range", "CR", "Fix the utilisation colour scale. Empty = 0 to the maximum (or 1 if lower).", GH_ParamAccess.item);
@@ -84,7 +84,7 @@ namespace ClayBeso.GH.Components
             {
                 if (strength <= 0) strength = model.Material.Strength;
                 if (strength <= 0)
-                    throw new ArgumentException("Set a clay strength f, here or on the Clay Material component.");
+                    throw new ArgumentException("Set a clay strength f, here or on the Material component.");
 
                 var t = thick.Count > 0 ? RhinoConvert.Expand(thick, model.ElementCount, "Thickness") : model.Thickness.ToList();
                 if (t.Any(x => x <= 0)) throw new ArgumentException("Thickness must be positive.");

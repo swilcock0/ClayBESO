@@ -26,7 +26,8 @@ namespace ClayBeso.GH.Components
             p.AddBooleanParameter("Legend", "Lg", "Draw a colour legend in the viewport.", GH_ParamAccess.item, true);
             p.AddGenericParameter("Layer Rule", "Rule", "Optional Layer Rule.", GH_ParamAccess.item);
             p.AddNumberParameter("Bond Efficiency", "η", "With a Layer Rule: interface efficiency 0-1.", GH_ParamAccess.item, 1.0);
-            p.AddIntegerParameter("Show", "Show", "0 = von Mises stress, 1 = displacement.", GH_ParamAccess.item, 0);
+            p.AddIntegerParameter("Show", "Show", "0 = von Mises stress, 1 = displacement, 2 = buckling mode.", GH_ParamAccess.item, 0);
+            p.AddBooleanParameter("Buckling", "Buckling", "Also run a linear buckling analysis.", GH_ParamAccess.item, false);
             for (int i = 1; i < p.ParamCount; i++) p[i].Optional = true;
         }
 
@@ -42,6 +43,8 @@ namespace ClayBeso.GH.Components
             p.AddPointParameter("Max Stress Point", "σMax", "Centre of the face with the highest von Mises stress.", GH_ParamAccess.item);
             p.AddVectorParameter("Force Flow", "FF", "Per face force flow direction.", GH_ParamAccess.list);
             p.AddLineParameter("Flow Lines", "FL", "A short line per face along the force flow.", GH_ParamAccess.list);
+            p.AddNumberParameter("Buckling Factor", "λ", "Lowest buckling load factor.", GH_ParamAccess.item);
+            p.AddVectorParameter("Buckling Mode", "φ", "Buckling shape per vertex (largest = 1).", GH_ParamAccess.list);
         }
     }
 }

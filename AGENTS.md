@@ -224,10 +224,19 @@ Shell Model -> Shell BESO --Design--> Print Layers --Print--> Print Check
   deviation), and `Fem/PrintStages` (analysis of each partly printed stage). Source: Vele, Kurilla &
   Achten 2023 (PDFs are in the git-ignored `Amir/` folder). Open: clay ageing in stages (younger
   layers softer), and default limits calibrated by docs/VALIDATION.md §7.
-- Linear elastic, small displacements, one load case. Print stages exist, but there is no
-  buckling check. Wet-clay walls
-  often fail by buckling, so a linear buckling analysis is a high-value addition.
+  Force-aligned turning stretches layers; `LayerField.Compute(maxHeight:)` (Print Layers passes the
+  rule's hMax) reduces the turn so layers stay within max(hMax, conforming height). Keep
+  `ForceAlignedLayersStayWithinTheMaxLayerHeight` (the example vase) passing.
+- **Linear buckling (done):** `Fem/Buckling.cs` (geometric stiffness from the membrane forces,
+  restarted Lanczos for the smallest positive load factor). Print Check runs it for the finished
+  piece and every stage (`PrintStageOptions.Buckling`), Shell Analysis on request. Keep the
+  `BucklingTests` benchmarks (Euler, Greenhill, classical cylinder) passing. Open: second-order
+  (P-delta) analysis, which can reuse `Buckling.GeometricBlocks`; calibrating the warning margin
+  (`BucklingText.Margin` = 3, a placeholder) with docs/VALIDATION.md §5.
+- Linear elastic, small displacements, one load case (several load cases are a good next task).
 - Better membrane element (ANDES OPT) for accuracy on coarse meshes.
+- Shell BESO's Filter Radius 0 (default) means automatic: `SensitivityFilter.AutoRadius` = 3× the
+  average mesh edge. In the core, `BesoSettings.FilterRadius` 0 still means no filter.
 - Sensitivity filter uses straight-line distance. A geodesic filter would avoid leaking across
   narrow gaps.
 - Void mode can oscillate without converging, and holes interrupt continuous layers.

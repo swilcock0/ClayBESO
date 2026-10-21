@@ -21,6 +21,9 @@ namespace ClayBeso.Fem
 
         /// <summary>Weaker across the layers (kappa = eta*c from the realised layer heights).</summary>
         public bool Orthotropic { get; set; } = true;
+
+        /// <summary>Also run a linear buckling analysis of each stage.</summary>
+        public bool Buckling { get; set; }
     }
 
     /// <summary>The partly printed shell at one stage.</summary>
@@ -47,6 +50,15 @@ namespace ClayBeso.Fem
 
         /// <summary>Per vertex of the FULL model (zero where not printed yet) [mm].</summary>
         public Vec3[] Displacement { get; internal set; }
+
+        /// <summary>
+        /// Buckling load factor of this stage (its own weight, times this, makes it buckle); NaN when not
+        /// computed, +infinity when nothing is in compression.
+        /// </summary>
+        public double BucklingFactor { get; internal set; } = double.NaN;
+
+        /// <summary>Buckling shape per vertex of the FULL model, largest = 1 (null when not computed).</summary>
+        public Vec3[] BucklingMode { get; internal set; }
 
         /// <summary>Why the stage could not be analysed (null if it was).</summary>
         public string Skipped { get; internal set; }
@@ -140,7 +152,19 @@ namespace ClayBeso.Fem
             }
 
             var solver = new ShellSolver(stage);
-            var r = solver.Solve(scaling);
+            AnalysisResult r;
+            if (o.Buckling)
+            {
+                var b = Buckling.Compute(solver, scaling);
+                r = b.Analysis;
+                res.BucklingFactor = b.Critical;
+                if (b.Modes.Length > 0)
+                {
+                    res.BucklingMode = new Vec3[model.NodeCount];
+                    for (int i = 0; i < n; i++) res.BucklingMode[back[i]] = b.Modes[0][i];
+                }
+            }
+            else r = solver.Solve(scaling);
             var vm = solver.VonMises(r, scaling);
             res.MaxDisplacement = r.MaxDisplacement;
             res.MaxVonMises = vm.Max();

@@ -24,7 +24,7 @@ namespace ClayBeso.GH.Components
         protected override void RegisterInputParams(GH_InputParamManager p)
         {
             p.AddMeshParameter("Mesh", "Mesh", "Mid-surface mesh of the shell, in document units.", GH_ParamAccess.item);
-            p.AddGenericParameter("Material", "Material", "Clay Material. Default: green clay (E = 1 MPa, strength 0.03 MPa placeholder).", GH_ParamAccess.item);
+            p.AddGenericParameter("Material", "Material", "Material. Default: green clay (E = 1 MPa, strength 0.03 MPa placeholder).", GH_ParamAccess.item);
             p.AddNumberParameter("Thickness", "Thickness", "Wall thickness [mm]: one value, or one per mesh face (after triangulation).", GH_ParamAccess.list, 5.0);
             p.AddBooleanParameter("Fix Base", "Base", "Clamp every vertex within the tolerance of the lowest Z (the print bed).", GH_ParamAccess.item, true);
             p.AddPointParameter("Supports", "Supports", "Extra support points (snapped to the nearest vertex).", GH_ParamAccess.list);

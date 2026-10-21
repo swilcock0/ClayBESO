@@ -22,6 +22,9 @@ namespace ClayBeso.Printing
 
         /// <summary>Apply point loads during printing too (they always act on the finished piece).</summary>
         public bool StagePointLoads { get; set; }
+
+        /// <summary>Linear buckling analysis of the finished piece and of every stage.</summary>
+        public bool Buckling { get; set; } = true;
     }
 
     /// <summary>Structural check of a print plan: the finished piece with all loads, and the print stages.</summary>
@@ -40,6 +43,25 @@ namespace ClayBeso.Printing
 
         /// <summary>Index into Stages of the most critical stage (-1 when no stages).</summary>
         public int WorstStage { get; internal set; } = -1;
+
+        /// <summary>Buckling of the finished piece under all loads (null when not computed).</summary>
+        public BucklingResult FinalBuckling { get; internal set; }
+
+        /// <summary>Index into Stages of the stage with the lowest buckling factor (-1 if none).</summary>
+        public int BucklingStage { get; internal set; } = -1;
+
+        /// <summary>Lowest buckling factor anywhere: finished piece or any stage (NaN when not computed).</summary>
+        public double MinBucklingFactor
+        {
+            get
+            {
+                if (FinalBuckling == null) return double.NaN;
+                double f = FinalBuckling.Critical;
+                foreach (var s in Stages)
+                    if (s.Skipped == null && !double.IsNaN(s.BucklingFactor)) f = Math.Min(f, s.BucklingFactor);
+                return f;
+            }
+        }
 
         public double FinalMaxUtilisation =>
             HasStrength ? FinalInterlayer.Utilisation.Where(u => !double.IsNaN(u)).DefaultIfEmpty(0).Max() : double.NaN;
@@ -74,9 +96,11 @@ namespace ClayBeso.Printing
                         scaling.Across[e] = bond.Efficiency * bond.Contact(t[e], hReal[e]);
             }
             var solver = new ShellSolver(model);
-            var r = solver.Solve(scaling);
+            BucklingResult buckling = s.Buckling ? Buckling.Compute(solver, scaling) : null;
+            var r = buckling?.Analysis ?? solver.Solve(scaling);
             var result = new PrintCheckResult
             {
+                FinalBuckling = buckling,
                 HasStrength = s.Strength > 0,
                 Final = r,
                 FinalScaling = scaling,
@@ -96,12 +120,17 @@ namespace ClayBeso.Printing
                     Strength = Math.Max(0, s.Strength),
                     Bond = bond,
                     Orthotropic = s.Orthotropic,
+                    Buckling = s.Buckling,
                 });
                 var done = Enumerable.Range(0, result.Stages.Count).Where(i => result.Stages[i].Skipped == null).ToArray();
                 if (done.Length > 0)
                     result.WorstStage = result.HasStrength
                         ? done.OrderByDescending(i => result.Stages[i].MaxUtilisation).First()
                         : done.OrderByDescending(i => result.Stages[i].MaxVonMises).First();
+                var buckled = done.Where(i => !double.IsNaN(result.Stages[i].BucklingFactor) &&
+                                              !double.IsInfinity(result.Stages[i].BucklingFactor)).ToArray();
+                if (buckled.Length > 0)
+                    result.BucklingStage = buckled.OrderBy(i => result.Stages[i].BucklingFactor).First();
             }
             return result;
         }

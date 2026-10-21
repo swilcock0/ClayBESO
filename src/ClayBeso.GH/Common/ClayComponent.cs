@@ -1,9 +1,13 @@
 using System.Collections.Generic;
 using System.Drawing;
+using System.Globalization;
 using System.Linq;
+using System.Windows.Forms;
 using GH_IO.Serialization;
 using Grasshopper.Kernel;
+using Grasshopper.Kernel.Parameters;
 using Grasshopper.Kernel.Special;
+using Grasshopper.Kernel.Types;
 
 namespace ClayBeso.GH.Common
 {
@@ -23,10 +27,27 @@ namespace ClayBeso.GH.Common
         }
     }
 
+    /// <summary>A named set of values for number inputs, offered on the component's right-click menu.</summary>
+    public sealed class Preset
+    {
+        public string Name { get; }
+        /// <summary>Input name and value, in the units the input states.</summary>
+        public (string Input, double Value)[] Values { get; }
+
+        public Preset(string name, params (string Input, double Value)[] values)
+        {
+            Name = name;
+            Values = values;
+        }
+    }
+
     /// <summary>
     /// Base for ClayBESO components. When a component is newly placed on the canvas, every mode input
     /// it declares in <see cref="Dropdowns"/> gets a connected dropdown, so options are picked by name
-    /// instead of by number. Components loaded from a file or pasted are left exactly as they were.
+    /// instead of by number. If it declares <see cref="Presets"/>, every input of the first (default)
+    /// preset gets a connected text box (panel) holding its value, and the right-click menu offers the
+    /// presets, which rewrite those text boxes. Components loaded from a file or pasted are left exactly
+    /// as they were.
     /// </summary>
     public abstract class ClayComponent : GH_Component
     {
@@ -45,6 +66,9 @@ namespace ClayBeso.GH.Common
         /// <summary>Mode inputs that get an automatic dropdown.</summary>
         protected virtual IEnumerable<Dropdown> Dropdowns => Enumerable.Empty<Dropdown>();
 
+        /// <summary>Right-click presets. The first one is the default and sets the spawned text boxes.</summary>
+        protected virtual IEnumerable<Preset> Presets => Enumerable.Empty<Preset>();
+
         public override bool Read(GH_IReader reader)
         {
             _deserialised = true;   // opened from a file or pasted: don't touch its wiring
@@ -56,16 +80,103 @@ namespace ClayBeso.GH.Common
             base.AddedToDocument(document);
             if (_deserialised) return;
             var lists = Dropdowns.ToList();
-            if (lists.Count == 0) return;
+            var preset = Presets.FirstOrDefault();
+            if (lists.Count == 0 && preset == null) return;
             // Defer until the component is laid out on the canvas.
-            document.ScheduleSolution(5, doc => AttachDropdowns(doc, lists));
+            document.ScheduleSolution(5, doc =>
+            {
+                if (OnPingDocument() != doc) return;
+                Attributes.ExpireLayout();
+                Attributes.PerformLayout();
+                bool added = AttachDropdowns(doc, lists);
+                if (preset != null) added |= AttachTextBoxes(doc, preset);
+                if (added) ExpireSolution(false);
+            });
         }
 
-        private void AttachDropdowns(GH_Document doc, List<Dropdown> lists)
+        private static string Format(double v) => v.ToString("G", CultureInfo.InvariantCulture);
+
+        private bool AttachTextBoxes(GH_Document doc, Preset preset)
         {
-            if (OnPingDocument() != doc) return;
-            Attributes.ExpireLayout();
-            Attributes.PerformLayout();
+            bool added = false;
+            foreach (var (name, value) in preset.Values)
+            {
+                int i = In(name);
+                if (i < 0) continue;
+                var input = Params.Input[i];
+                if (input.SourceCount > 0) continue;
+
+                var panel = new GH_Panel();
+                panel.CreateAttributes();
+                panel.NickName = name;
+                panel.UserText = Format(value);
+                panel.Properties.Multiline = false;
+                panel.Properties.DrawIndices = false;
+                panel.Properties.DrawPaths = false;
+
+                var b = input.Attributes.Bounds;
+                const float width = 70, height = 20;
+                var pivot = new PointF(b.Left - width - 30, b.Top + (b.Height - height) / 2);
+                panel.Attributes.Pivot = pivot;
+                panel.Attributes.Bounds = new RectangleF(pivot, new SizeF(width, height));
+
+                doc.AddObject(panel, false);
+                input.AddSource(panel);
+                added = true;
+            }
+            return added;
+        }
+
+        public override void AppendAdditionalMenuItems(ToolStripDropDown menu)
+        {
+            base.AppendAdditionalMenuItems(menu);
+            var presets = Presets.ToList();
+            if (presets.Count == 0) return;
+            Menu_AppendSeparator(menu);
+            foreach (var p in presets)
+                Menu_AppendItem(menu, "Preset: " + p.Name, (s, e) => ApplyPreset(p));
+        }
+
+        /// <summary>
+        /// Writes a preset's values into the connected text boxes (or the input's own value when nothing is
+        /// connected). Inputs wired to anything else (a slider, another component) are left alone.
+        /// </summary>
+        private void ApplyPreset(Preset preset)
+        {
+            var doc = OnPingDocument();
+            if (doc == null) return;
+            var skipped = new List<string>();
+            foreach (var (name, value) in preset.Values)
+            {
+                int i = In(name);
+                if (i < 0) continue;
+                var input = Params.Input[i];
+                if (input.SourceCount == 1 && input.Sources[0] is GH_Panel panel)
+                {
+                    doc.UndoUtil.RecordGenericObjectEvent("Preset " + preset.Name, panel);
+                    panel.UserText = Format(value);
+                    panel.Attributes.ExpireLayout();
+                    panel.ExpireSolution(false);
+                }
+                else if (input.SourceCount == 0 && input is Param_Number number)
+                {
+                    doc.UndoUtil.RecordGenericObjectEvent("Preset " + preset.Name, number);
+                    number.PersistentData.Clear();
+                    number.PersistentData.Append(new GH_Number(value));
+                    number.ExpireSolution(false);
+                }
+                else skipped.Add(name);
+            }
+            ExpireSolution(true);
+            if (skipped.Count > 0)
+                MessageBox.Show(
+                    $"Preset {preset.Name}: {string.Join(", ", skipped)} not changed, because they are connected to " +
+                    "something other than a single text box (panel). Set them by hand.",
+                    NickName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private bool AttachDropdowns(GH_Document doc, List<Dropdown> lists)
+        {
             bool added = false;
             foreach (var d in lists)
             {
@@ -96,7 +207,7 @@ namespace ClayBeso.GH.Common
                 input.AddSource(list);
                 added = true;
             }
-            if (added) ExpireSolution(false);
+            return added;
         }
     }
 }

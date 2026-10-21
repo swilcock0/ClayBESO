@@ -15,7 +15,8 @@ namespace ClayBeso.GH.Components
             : base("Print Check", "Check",
                 "Structural check of a print, in one place: the finished piece under all loads, and the piece while it " +
                 "is printed (stages loaded by their own weight). Layer interfaces carry force only through their bonded " +
-                "strip c = (w - h)/w, and the wall is weaker across the layers.\n" +
+                "strip c = (w - h)/w, and the wall is weaker across the layers. With Buckling on, it also finds how many " +
+                "times its loads each stage carries before the wall buckles.\n" +
                 "Connect the Print output of Print Layers. Pick what to see with Show, and when with Stage.",
                 Tab.Name, Tab.Analyse) { }
 
@@ -30,6 +31,7 @@ namespace ClayBeso.GH.Components
             ("Von Mises stress", 2),
             ("Displacement", 3),
             ("Layer contact", 4),
+            ("Buckling mode", 5),
         };
 
         private static readonly (string, int)[] StageOptions =
@@ -47,8 +49,8 @@ namespace ClayBeso.GH.Components
         protected override void RegisterInputParams(GH_InputParamManager p)
         {
             p.AddGenericParameter("Print", "Print", "Print output of Print Layers.", GH_ParamAccess.item);
-            p.AddNumberParameter("Strength", "Strength", "Clay strength [MPa] for the interlayer utilisation. 0 = the Clay Material strength; if that is 0 too, utilisation isn't reported.", GH_ParamAccess.item, 0.0);
-            p.AddIntegerParameter("Show", "Show", "0 = interlayer utilisation, 1 = interface angle, 2 = von Mises, 3 = displacement, 4 = layer contact (dropdown appears when placed).", GH_ParamAccess.item, 0);
+            p.AddNumberParameter("Strength", "Strength", "Clay strength [MPa] for the interlayer utilisation. 0 = the Material strength; if that is 0 too, utilisation isn't reported.", GH_ParamAccess.item, 0.0);
+            p.AddIntegerParameter("Show", "Show", "0 = interlayer utilisation, 1 = interface angle, 2 = von Mises, 3 = displacement, 4 = layer contact, 5 = buckling mode (needs Buckling on; dropdown appears when placed).", GH_ParamAccess.item, 0);
             p.AddIntegerParameter("Stage", "Stage", "-1 = finished piece, -2 = worst print stage, 0..N-1 = that stage (dropdown appears when placed; use a slider for a specific stage).", GH_ParamAccess.item, -1);
             p.AddIntegerParameter("Stages", "Stages", "Print stages to check (0 = finished piece only).", GH_ParamAccess.item, 8);
             p.AddNumberParameter("Bond Efficiency", "η", "Interface efficiency 0-1 (calibrate with docs/VALIDATION.md section 4). 0 = the design's, or 1.", GH_ParamAccess.item, 0.0);
@@ -57,6 +59,7 @@ namespace ClayBeso.GH.Components
             p.AddNumberParameter("Deform Scale", "DS", "Displacement exaggeration for the preview.", GH_ParamAccess.item, 10.0);
             p.AddIntervalParameter("Colour Range", "CR", "Fix the preview colour scale. Empty = automatic for what is shown.", GH_ParamAccess.item);
             p.AddBooleanParameter("Legend", "Lg", "Draw a colour legend in the viewport.", GH_ParamAccess.item, true);
+            p.AddBooleanParameter("Buckling", "Buckling", "Linear buckling analysis of the finished piece and of every print stage (takes longer). Turn off while BESO is running if it slows things down.", GH_ParamAccess.item, true);
             for (int i = 1; i < p.ParamCount; i++) p[i].Optional = true;
         }
 
@@ -72,6 +75,8 @@ namespace ClayBeso.GH.Components
             p.AddNumberParameter("Stage Utilisation", "Us", "Per stage: highest interlayer utilisation (von Mises [MPa] without a strength).", GH_ParamAccess.list);
             p.AddVectorParameter("Force Flow", "FF", "Per face, finished piece: dominant principal force direction; length 0-1 = how directional.", GH_ParamAccess.list);
             p.AddLineParameter("Flow Lines", "FL", "Finished piece: a short line per face along the force flow, for viewing.", GH_ParamAccess.list);
+            p.AddNumberParameter("Buckling Factor", "Buckling Factor", "Lowest buckling load factor [-], finished piece or any stage: the loads times this make a perfect shell buckle. < 1 = buckles; real walls buckle well below it, so aim higher (see Info). Infinity = nothing in compression.", GH_ParamAccess.item);
+            p.AddNumberParameter("Stage Buckling", "λs", "Per stage: buckling load factor under its own weight [-] (how many times heavier the clay could be before that stage buckles).", GH_ParamAccess.list);
         }
 
         protected override void SolveInstance(IGH_DataAccess da)
@@ -90,6 +95,8 @@ namespace ClayBeso.GH.Components
             da.GetData(In("Stage"), ref stage);
             da.GetData(In("Deform Scale"), ref ds);
             da.GetData(In("Legend"), ref legend);
+            bool buckling = true;
+            da.GetData(In("Buckling"), ref buckling);
 
             var plan = RhinoConvert.Unwrap<PrintPlan>(printObj);
             if (plan == null) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Input is not a Print (from Print Layers)."); return; }
@@ -105,6 +112,7 @@ namespace ClayBeso.GH.Components
                     Orthotropic = orth,
                     Stages = Math.Max(0, stages),
                     StagePointLoads = stagePl,
+                    Buckling = buckling,
                 });
 
                 int shown = stage == -2 ? check.WorstStage : stage;
@@ -115,10 +123,17 @@ namespace ClayBeso.GH.Components
                 var finite = values.Where(v => !double.IsNaN(v)).ToArray();
                 (double, double)? auto = show == 0 ? (0.0, Math.Max(1.0, finite.DefaultIfEmpty(0).Max()))
                     : show == 1 ? (0.0, 90.0)
-                    : show == 4 ? (0.0, 1.0)
+                    : show == 4 || show == 5 ? (0.0, 1.0)
                     : ((double, double)?)null;
                 var range = ReadRange(da, "Colour Range", auto);
                 var disp = shown < 0 ? (Func<int, Geometry.Vec3>)(v => check.Final.Displacement(v)) : (v => check.Stages[shown].Displacement[v]);
+                if (show == 5)
+                {
+                    // Draw the buckling shape instead of the static deflection.
+                    var mode = BucklingMode(check, shown);
+                    double amp = BucklingText.Amplitude(model.Mesh);
+                    disp = v => mode == null ? Geometry.Vec3.Zero : mode[v] * amp;
+                }
                 var printed = shown < 0 ? null : check.Stages[shown].VonMises.Select(double.IsNaN).ToArray();
 
                 da.SetData(Out("Max Utilisation"), check.MaxUtilisation);
@@ -126,6 +141,8 @@ namespace ClayBeso.GH.Components
                 da.SetDataList(Out("Stage Height"), check.Stages.Select(x => x.TopZ / s));
                 da.SetDataList(Out("Stage Utilisation"), check.Stages.Select(x => check.HasStrength ? x.MaxUtilisation : x.MaxVonMises));
                 da.SetData(Out("Worst Stage"), check.WorstStage);
+                da.SetData(Out("Buckling Factor"), check.MinBucklingFactor);
+                da.SetDataList(Out("Stage Buckling"), check.Stages.Select(x => x.BucklingFactor));
                 if (finite.Length > 0)
                 {
                     int iMax = Array.IndexOf(values, finite.Max());
@@ -141,7 +158,12 @@ namespace ClayBeso.GH.Components
                 if (fromFinished && shown >= 0)
                     AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, $"{title} is shown for the finished piece (not computed per stage).");
                 if (!check.HasStrength && show == 0)
-                    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "No clay strength: set Strength here or on Clay Material to get utilisation.");
+                    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "No clay strength: set Strength here or on Material to get utilisation.");
+                if (show == 5 && !buckling)
+                    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Turn Buckling on to see the buckling mode.");
+                BucklingText.Warn(this, check.MinBucklingFactor,
+                    check.BucklingStage >= 0 && check.Stages[check.BucklingStage].BucklingFactor <= check.FinalBuckling.Critical
+                        ? $"stage {check.BucklingStage}" : "finished piece");
                 if (check.HasStrength && check.MaxUtilisation > 1)
                     AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Interlayer utilisation reaches {check.MaxUtilisation:G3} (> 1).");
             }
@@ -178,11 +200,27 @@ namespace ClayBeso.GH.Components
                 case 4:
                     title = "Layer contact"; unit = "fraction"; fromFinished = true;
                     return fin.Contact;
+                case 5:
+                {
+                    title = "Buckling mode"; unit = "relative";
+                    var values = BucklingText.FaceValues(mesh, BucklingMode(c, stage));
+                    if (stage >= 0)
+                        for (int f = 0; f < values.Length; f++)
+                            if (double.IsNaN(c.Stages[stage].VonMises[f])) values[f] = double.NaN;
+                    return values;
+                }
                 default:
                     title = "Interlayer utilisation"; unit = "-";
                     if (!c.HasStrength) return Enumerable.Repeat(double.NaN, mesh.FaceCount).ToArray();
                     return stage < 0 ? fin.Utilisation : c.Stages[stage].Utilisation;
             }
+        }
+
+        private static Geometry.Vec3[] BucklingMode(PrintCheckResult c, int stage)
+        {
+            if (stage >= 0) return c.Stages[stage].BucklingMode;
+            var b = c.FinalBuckling;
+            return b != null && b.Modes.Length > 0 ? b.Modes[0] : null;
         }
 
         private static string Info(PrintCheckResult c, PrintPlan plan, int shown)
@@ -201,6 +239,17 @@ namespace ClayBeso.GH.Components
                 var w = c.Stages[c.WorstStage];
                 lines += $"During printing ({c.Stages.Count} stages, self-weight): worst is stage {c.WorstStage}, layer {w.Layer}: " +
                          (c.HasStrength ? $"utilisation {w.MaxUtilisation:G3}, " : "") + $"von Mises {w.MaxVonMises:G3} MPa\n";
+            }
+            if (c.FinalBuckling != null)
+            {
+                lines += $"Buckling factor (perfect shape): finished piece {BucklingText.Factor(c.FinalBuckling.Critical)}";
+                if (c.BucklingStage >= 0)
+                {
+                    var b = c.Stages[c.BucklingStage];
+                    lines += $", lowest while printing {BucklingText.Factor(b.BucklingFactor)} at stage {c.BucklingStage} " +
+                             $"(z = {b.TopZ / plan.Design.Model.UnitScale:G4})";
+                }
+                lines += $"\n  < 1 = buckles; real walls buckle well below the perfect-shape value, so treat < {BucklingText.Margin:G2} as at risk\n";
             }
             lines += $"Showing {(shown < 0 ? "the finished piece" : $"stage {shown}")}";
             if (!c.HasStrength) lines += "\n(no strength: utilisation not reported)";

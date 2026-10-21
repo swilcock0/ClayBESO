@@ -1,5 +1,6 @@
 using ClayBeso.Fem;
 using ClayBeso.Geometry;
+using ClayBeso.Optimisation;
 using ClayBeso.Printing;
 using Xunit.Abstractions;
 
@@ -49,7 +50,8 @@ public class PrintPipelineTests
         var flow = ff.Direction.Select((d, e) => d * ff.Anisotropy[e]).ToArray();
         var h = LayerHeightField.Compute(model.Mesh, design.Thickness, PrintPlanner.DefaultRule(), 5, out _);
         var (bottom, top) = LayerField.ExtremeVertices(model.Mesh, Vec3.UnitZ, 1e-6);
-        var field = LayerField.Compute(model.Mesh, h, bottom, top, Vec3.UnitZ, true, LayerMethod.ForceAligned, flow, 30);
+        var field = LayerField.Compute(model.Mesh, h, bottom, top, Vec3.UnitZ, true, LayerMethod.ForceAligned, flow, 30,
+            maxHeight: plan.Rule.HMax);
 
         Assert.NotNull(plan.Flow);
         for (int v = 0; v < model.NodeCount; v++) Assert.Equal(field.Phi[v], plan.Field.Phi[v], 6);
@@ -89,6 +91,74 @@ public class PrintPipelineTests
         Assert.Equal(4, check.Stages.Count);
         Assert.InRange(check.WorstStage, 0, 3);
         Assert.True(check.MaxUtilisation >= check.FinalMaxUtilisation);
+    }
+
+    [Fact]
+    public void CheckerReportsTheLowestBucklingFactor()
+    {
+        var design = Graded();
+        var plan = PrintPlanner.Plan(design, new PrintSettings { BaseTolerance = 1e-6 });
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var off = PrintChecker.Check(plan, new PrintCheckSettings { Buckling = false });
+        long msOff = sw.ElapsedMilliseconds;
+        sw.Restart();
+        var on = PrintChecker.Check(plan, new PrintCheckSettings());
+        long msOn = sw.ElapsedMilliseconds;
+        _out.WriteLine($"{design.Model.NodeCount} nodes, 8 stages: {msOff} ms without buckling, {msOn} ms with; " +
+                       $"finished {on.FinalBuckling.Critical:G4}, stages " + string.Join(", ", on.Stages.Select(x => $"{x.BucklingFactor:G4}")));
+
+        Assert.True(double.IsNaN(off.MinBucklingFactor));
+        Assert.True(on.FinalBuckling.Converged);
+        double lowest = on.Stages.Select(x => x.BucklingFactor).Append(on.FinalBuckling.Critical).Min();
+        Assert.Equal(lowest, on.MinBucklingFactor, 12);
+        Assert.Equal(on.Stages.Select(x => x.BucklingFactor).Min(), on.Stages[on.BucklingStage].BucklingFactor, 12);
+        // Buckling changes nothing else.
+        Assert.Equal(off.Final.Compliance, on.Final.Compliance, 9);
+    }
+
+    [Fact]
+    public void ForceAlignedLayersStayWithinTheMaxLayerHeight()
+    {
+        // Regression for the example vase: thin BESO walls with linear-inverse layers (tallest layers on
+        // the thinnest walls), sliced force-aligned. Turning the layers pulled them apart to up to 7 mm on
+        // 3.5 mm walls, so beads barely touched and the interlayer utilisation reached ~19.
+        var mesh = TestMeshes.EllipseLoftVase();
+        int n = mesh.VertexCount;
+        var fix = new bool[6 * n];
+        for (int i = 0; i < n; i++)
+            if (mesh.Vertices[i].Z <= 0.5) for (int d = 0; d < 6; d++) fix[6 * i + d] = true;
+        var model = new ShellModel(mesh, new ClayMaterial(1, 0.35, 1900, 0.03), new[] { 5.0 }, fix, null, new Vec3(0, 0, -1));
+        var rule = new LayerRule(LayerMapping.LinearInverse, 1.0, 2.25);
+        var opt = new BesoOptimizer(model, new BesoSettings
+        {
+            MinThickness = 3.5, MaxThickness = 7, FilterRadius = SensitivityFilter.AutoRadius(mesh), LayerRule = rule, Bond = new BondModel(1),
+        });
+        while (opt.Step()) { }
+        var design = new ShellDesign(model, opt.EffectiveThickness(), opt.Rule, opt.Settings.Bond, "test");
+
+        var aligned = PrintPlanner.Plan(design, new PrintSettings { Method = LayerMethod.ForceAligned });
+        var conforming = PrintPlanner.Plan(design, new PrintSettings { Method = LayerMethod.Conforming });
+        double hMax = aligned.Rule.HMax;
+
+        // The same field without the limit, for comparison.
+        var flow = aligned.Flow.Direction.Select((d, e) => d * aligned.Flow.Anisotropy[e]).ToArray();
+        var unlimited = LayerField.Compute(mesh, aligned.VertexHeight, aligned.Field.BaseVertices, aligned.Field.TopVertices,
+            Vec3.UnitZ, true, LayerMethod.ForceAligned, flow, 30, 5);
+
+        double Max(double[] h) => h.Where(x => !double.IsInfinity(x) && !double.IsNaN(x)).Max();
+        var hAligned = aligned.Field.RealisedFaceHeight();
+        var hConf = conforming.Field.RealisedFaceHeight();
+        var check = PrintChecker.Check(aligned, new PrintCheckSettings { Strength = 0.03, Buckling = false });
+        _out.WriteLine($"max realised h: unlimited {Max(unlimited.RealisedFaceHeight()):F2}, limited {Max(hAligned):F2}, conforming {Max(hConf):F2} (hMax {hMax}); " +
+                       $"reduced turn on {aligned.Field.ReducedTurnFaces} faces, overall turn {aligned.Field.TurnFraction:P0}; poor-contact points {aligned.PoorContactFlags} (conforming {conforming.PoorContactFlags}); " +
+                       $"max interlayer U {check.MaxUtilisation:G3}");
+
+        Assert.True(Max(unlimited.RealisedFaceHeight()) > 1.5 * hMax, "the unlimited field should show the problem");
+        Assert.True(aligned.Field.ReducedTurnFaces > 0);
+        for (int f = 0; f < hAligned.Length; f++)
+            if (!double.IsInfinity(hAligned[f]) && !double.IsInfinity(hConf[f]))
+                Assert.True(hAligned[f] <= 1.02 * Math.Max(hMax, hConf[f]), $"face {f}: {hAligned[f]:F2} mm");
+        Assert.True(check.MaxUtilisation < 2, $"interlayer utilisation {check.MaxUtilisation:G3}");
     }
 
     [Fact]
