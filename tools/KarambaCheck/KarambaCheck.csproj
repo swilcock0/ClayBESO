@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Developer-only cross-check of the ClayBeso core against Karamba3D (MIT licence, installed through
+    Rhino's package manager). NOT part of ClayBeso.sln and never shipped: the plugin keeps CSparse as
+    its only dependency. See README.md in this folder.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <!-- Override with -p:KarambaDir=... if Karamba is installed elsewhere. -->
+    <KarambaDir Condition="'$(KarambaDir)' == ''">$(APPDATA)\McNeel\Rhinoceros\packages\8.0\Karamba3D Community\3.1.60921\net8.0-windows</KarambaDir>
+  </PropertyGroup>
+
+  <Target Name="CheckKaramba" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(KarambaDir)\KarambaCommon.dll')"
+           Text="Karamba3D not found in '$(KarambaDir)'. Install Karamba3D Community 3.1 in Rhino 8 (Package Manager), or pass -p:KarambaDir=&lt;folder with KarambaCommon.dll&gt;." />
+  </Target>
+
+  <ItemGroup>
+    <Reference Include="KarambaCommon">
+      <HintPath>$(KarambaDir)\KarambaCommon.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <!-- Karamba's native solver (karambafeb.dll) and the libraries it loads at run time. -->
+    <None Include="$(KarambaDir)\*.dll" Exclude="$(KarambaDir)\KarambaCommon.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ClayBeso.Core\ClayBeso.Core.csproj" />
+    <Compile Include="..\..\tests\ClayBeso.Tests\TestMeshes.cs" Link="TestMeshes.cs" />
+  </ItemGroup>
+
+</Project>

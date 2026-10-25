@@ -77,7 +77,15 @@ namespace ClayBeso.Optimisation
         public bool ThicknessFilter { get; set; } = true;
 
         // --- void mode
+
+        /// <summary>
+        /// Void mode stiffness penalty p. The interpolation (Huang &amp; Xie 2011) makes a removed face
+        /// behave like a wall x_min times as thick: membrane stiffness and weight x_min, bending x_min^3
+        /// (see <see cref="BesoOptimizer.VoidStiffness"/>).
+        /// </summary>
         public double Penalty { get; set; } = 3;
+
+        /// <summary>Void mode: density x_min of removed faces (their weight and stiffness factor).</summary>
         public double MinDensity { get; set; } = 1e-3;
 
         /// <summary>Maximum fraction of the design volume re-admitted per iteration.</summary>
@@ -107,6 +115,9 @@ namespace ClayBeso.Optimisation
             if (Mode == BesoMode.Void && VolumeFraction <= 0)
                 throw new ArgumentException("Void mode needs a volume fraction in (0, 1]: it removes material.");
             if (EvolutionRate <= 0) throw new ArgumentException("Evolution rate must be positive.");
+            if (Mode == BesoMode.Void && (MinDensity <= 0 || MinDensity >= 1))
+                throw new ArgumentException("Void mode minimum density must be in (0, 1).");
+            if (Mode == BesoMode.Void && Penalty < 1) throw new ArgumentException("Void mode penalty must be at least 1.");
             if (Mode == BesoMode.Thickness)
             {
                 if (MinThickness <= 0 || MaxThickness <= MinThickness)
@@ -147,7 +158,10 @@ namespace ClayBeso.Optimisation
         public ElementScaling Scaling { get; private set; }
         public AnalysisResult LastResult { get; private set; }
 
-        /// <summary>Filtered sensitivity per element (per unit volume) from the last step.</summary>
+        /// <summary>
+        /// Filtered sensitivity per element (per unit volume) from the last step: what the update ranked
+        /// or resized by (void mode: stiffness part only, see <see cref="RawSensitivity"/>).
+        /// </summary>
         public double[] Sensitivity { get; private set; }
 
         public int Iteration { get; private set; }
@@ -324,15 +338,40 @@ namespace ClayBeso.Optimisation
                 else
                 {
                     double t = _model.Thickness[e];
-                    double xp = Math.Pow(design[e], Settings.Penalty);
-                    s.Membrane[e] = xp * t;
-                    s.Bending[e] = xp * t * t * t;
+                    s.Membrane[e] = VoidStiffness(design[e]) * t;
+                    s.Bending[e] = VoidStiffness(design[e], bending: true) * t * t * t;
                     s.Weight[e] = design[e] * t;
                     s.Thickness[e] = t;
                     if (_rule != null) s.Across[e] = Kappa(t);
                 }
             }
             return s;
+        }
+
+        /// <summary>
+        /// Void mode stiffness factors (Huang &amp; Xie 2011, self-weight loads):
+        /// k(x) = c (1 - x^p) + x^p with c chosen so that k(1) = 1 and k(x_min) = k_min. A removed face
+        /// behaves like a wall x_min times as thick, like Karamba's soft-kill: membrane k_min = x_min (as
+        /// light as it is stiff, since the weight factor is x) and bending k_min = x_min^3 (for p = 3 that
+        /// is plain x^3). With plain x^p for the membrane, removed faces were x_min^(p-1) = 10^6 times
+        /// floppier than their weight and sagged far enough under gravity to dominate the compliance.
+        /// </summary>
+        /// <param name="bending">false = membrane factor, true = bending factor.</param>
+        public double VoidStiffness(double x, bool bending = false)
+        {
+            double xp = Math.Pow(x, Settings.Penalty), c = VoidOffset(bending);
+            return c * (1 - xp) + xp;
+        }
+
+        /// <summary>dk/dx of <see cref="VoidStiffness"/>.</summary>
+        public double VoidStiffnessSlope(double x, bool bending = false) =>
+            (1 - VoidOffset(bending)) * Settings.Penalty * Math.Pow(x, Settings.Penalty - 1);
+
+        private double VoidOffset(bool bending)
+        {
+            double p = Settings.Penalty, xmin = Settings.MinDensity, xmp = Math.Pow(xmin, p);
+            double kmin = bending ? xmin * xmin * xmin : xmin;
+            return (kmin - xmp) / (1 - xmp);
         }
 
         // ---------------------------------------------------------------- printed layers
@@ -363,7 +402,10 @@ namespace ClayBeso.Optimisation
             ComplianceHistory.Add(r.Compliance);
             VolumeFractionHistory.Add(CurrentVolumeFraction);
 
-            var filtered = DesignSensitivity(r, out _);
+            // Void mode ranks faces by stiffness only (see RawSensitivity); the analysis still has the weight.
+            var filtered = Settings.Mode == BesoMode.Void
+                ? _filter.Apply(RawSensitivity(r, includeWeight: false))
+                : DesignSensitivity(r, out _);
             if (_previousSensitivity != null && Settings.EffectiveHistoryAveraging)
                 for (int e = 0; e < filtered.Length; e++)
                     filtered[e] = 0.5 * (filtered[e] + _previousSensitivity[e]);
@@ -385,8 +427,13 @@ namespace ClayBeso.Optimisation
         /// <summary>
         /// alpha_e = -dC/dx_e / dV_e/dx_e. With design-dependent self-weight
         /// dC/dx = 2 u^T df/dx - u^T dK/dx u, so heavy, lightly-strained elements can score negative.
+        /// <paramref name="includeWeight"/> = false drops the weight term (void mode ranking): switching a
+        /// whole face off is far outside the range where this linear estimate holds, and with the weight
+        /// term the void update cut the load path to a rim load, leaving it hanging on removed faces
+        /// (compliance up 2-4x instead of down; tools/KarambaCheck). Thickness mode changes the wall in
+        /// small steps and keeps the exact gradient.
         /// </summary>
-        public double[] RawSensitivity(AnalysisResult r)
+        public double[] RawSensitivity(AnalysisResult r, bool includeWeight = true)
         {
             int m = _model.ElementCount;
             var a = new double[m];
@@ -394,7 +441,7 @@ namespace ClayBeso.Optimisation
             for (int e = 0; e < m; e++)
             {
                 double area = _model.Elements[e].Area;
-                double em = r.MembraneWork[e], eb = r.BendingWork[e], wu = r.WeightWork[e];
+                double em = r.MembraneWork[e], eb = r.BendingWork[e], wu = includeWeight ? r.WeightWork[e] : 0;
                 if (Settings.Mode == BesoMode.Thickness)
                 {
                     double t = tp[e];
@@ -408,10 +455,9 @@ namespace ClayBeso.Optimisation
                 else
                 {
                     double t = _model.Thickness[e];
-                    double p = Settings.Penalty;
-                    double dk = p * Math.Pow(Design[e], p - 1);
-                    // fm = x^p t, fb = x^p t^3, fw = x t ; dV/dx = A t
-                    a[e] = (dk * (t * em + t * t * t * eb) - 2 * t * wu) / (area * t);
+                    double dkm = VoidStiffnessSlope(Design[e]), dkb = VoidStiffnessSlope(Design[e], bending: true);
+                    // fm = km(x) t, fb = kb(x) t^3, fw = x t ; dV/dx = A t
+                    a[e] = (dkm * t * em + dkb * t * t * t * eb - 2 * t * wu) / (area * t);
                 }
             }
             return a;

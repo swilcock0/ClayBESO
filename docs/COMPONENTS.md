@@ -14,12 +14,52 @@ mesh output by Shell Model; per-vertex lists follow its vertices.
 Inputs in **bold** must be connected. The others have a default (shown) or are optional. New inputs
 are only ever added at the end, so saved definitions keep working.
 
-- **1 Model**: [Material](#material), [Shell Model](#shell-model)
+- **0 Start**: [Clay Print](#clay-print)
+- **1 Model**: [Material](#material), [Shell Model](#shell-model), [Fix Overhang](#fix-overhang)
 - **2 Analyse**: [Print Check](#print-check), [Shell Analysis](#shell-analysis)
 - **3 Optimise**: [Shell BESO](#shell-beso)
-- **4 Print**: [Layer Rule](#layer-rule), [Print Layers](#print-layers), [Wall Preview](#wall-preview)
+- **4 Print**: [Layer Rule](#layer-rule), [Print Layers](#print-layers), [Print Playback](#print-playback), [Wall Preview](#wall-preview)
 - **5 Help**: [Help](#help)
 - **Legacy (hidden from the toolbar)**: [Interlayer Check](#interlayer-check), [Layer Heights](#layer-heights), [Non-planar Layers](#non-planar-layers), [Print Stages](#print-stages)
+
+## 0 Start
+
+### Clay Print
+
+Nickname `Clay Print` · source `src/ClayBeso.GH/Components/ClayPrintComponent.cs`
+
+Everything in one component: give the shape of the wall and pick the printer.
+
+It clamps the base to the bed, optimises the wall thickness for its own weight, makes the non-planar layers, checks the finished piece and every print stage (strength and buckling) and scores how printable it is (1-100). Change the shape and watch the Score and Report.
+
+Time (0-1) plays the print back. For more control, use the separate components (Shell Model, Shell BESO, Print Layers, Print Check, Print Playback).
+
+**Inputs**
+
+| # | Name | Nick | Type | Access | Default | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | **Shape** | `Shape` | Geometry | item | required | The wall's mid-surface: a mesh, surface or polysurface (open at the top, no floor), standing on the bed (lowest point = bed). Surfaces are meshed automatically. |
+| 1 | Printer | `Printer` | Integer | item | `0` | Printer and nozzle (a dropdown appears when you place the component). Sets wall thickness, layer height, overhang and tilt limits and speed. |
+| 2 | Optimise | `Optimise` | Boolean | item | `true` | Optimise the wall thickness (same clay, stiffer). False = uniform wall, faster while you shape. |
+| 3 | Fix Overhang | `Fix Overhang` | Boolean | item | `false` | First pull overhangs back to the printer's max lean (changes the shape; see the Shape output and Fix Overhang component). |
+| 4 | Time | `Time` | Number | item | `1.0` | Print playback, 0 = start, 1 = finished. Use a 0-1 slider; right-click > Animate for a video. |
+| 5 | Material | `Material` | Generic | item | optional | Optional: a Material component. Default: green clay (E = 1 MPa, 1900 kg/m³, strength 0.03 MPa placeholder). |
+
+**Outputs**
+
+| # | Name | Nick | Type | Access | Description |
+| --- | --- | --- | --- | --- | --- |
+| 0 | Score | `Score` | Integer | item | Printability 1-100. Use it to compare designs; the Report says what limits it. |
+| 1 | Report | `Report` | Text | item | Each aspect of the score, weakest first, with what to change. |
+| 2 | Preview | `Preview` | Mesh | item | The beads printed up to Time (document units), coloured by wall thickness (bead width). |
+| 3 | Layers | `Layers` | Curve | tree | Layer toolpaths, one branch per layer (document units). |
+| 4 | Flow Factor | `Flow Factor` | Number | tree | Per toolpath point: flow multiplier (1 = the median bead) that gives the wall its thickness. |
+| 5 | Print Time | `Print Time` | Number | item | Printing time [min] at the printer's speed (no travel or pauses). |
+| 6 | Info | `Info` | Text | item | What was done: mesh, printer, optimisation, layers, time. |
+| 7 | Shape | `Shape` | Mesh | item | The mid-surface that was analysed (document units): the input, or the corrected shape with Fix Overhang on. |
+| 8 | Design | `Design` | Generic | item | For advanced use: the design (connect to Print Layers or Shell Analysis). |
+| 9 | Print | `Print` | Generic | item | For advanced use: the print (connect to Print Check or Print Playback). |
+| 10 | Check | `Check` | Generic | item | For advanced use: the check result (connect to Print Playback). |
 
 ## 1 Model
 
@@ -76,6 +116,32 @@ Build a shell analysis model from a mesh of the mid-surface (e.g. a vase). Quads
 | 2 | Supports | `S` | Point | list | Supported vertices. |
 | 3 | Info | `Info` | Text | item | Model summary. |
 
+### Fix Overhang
+
+Nickname `Fix Overhang` · source `src/ClayBeso.GH/Components/FixOverhangComponent.cs`
+
+Pulls overhanging parts of a vase back until the wall leans no more than Max Lean from vertical, so it prints without support. Points move only sideways, along the radius from the vase's axis, and only as far as needed; the base and parts that are already printable stay put.
+
+Made for vases (closed rings around a vertical axis, open top, no floor). Connect the result to Shell Model or Clay Print. A shape that narrows faster than the limit allows ends up wider at the top.
+
+**Inputs**
+
+| # | Name | Nick | Type | Access | Default | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | **Mesh** | `Mesh` | Mesh | item | required | Mid-surface mesh of the wall, standing on the bed (lowest point = bed), in document units. |
+| 1 | Max Lean | `Max Lean` | Number | item | `45.0` | Largest wall lean from vertical [deg] (planar clay starts to slump around 45°). |
+| 2 | Tolerance | `Tol` | Number | item | `0.5` | Band above the lowest point that is the base and stays put (document units). |
+| 3 | Legend | `Lg` | Boolean | item | `true` | Draw a colour legend in the viewport. |
+
+**Outputs**
+
+| # | Name | Nick | Type | Access | Description |
+| --- | --- | --- | --- | --- | --- |
+| 0 | Mesh | `Mesh` | Mesh | item | The corrected mesh (document units), same vertices and faces. |
+| 1 | Preview | `Preview` | Mesh | item | The corrected mesh coloured by how far each point moved. |
+| 2 | Moved | `Moved` | Number | list | Per vertex: how far it moved (document units). |
+| 3 | Info | `Info` | Text | item | How much moved. |
+
 ## 2 Analyse
 
 ### Print Check
@@ -119,6 +185,9 @@ Connect the Print output of Print Layers. Pick what to see with Show, and when w
 | 9 | Flow Lines | `FL` | Line | list | Finished piece: a short line per face along the force flow, for viewing. |
 | 10 | Buckling Factor | `Buckling Factor` | Number | item | Lowest buckling load factor [-], finished piece or any stage: the loads times this make a perfect shell buckle. < 1 = buckles; real walls buckle well below it, so aim higher (see Info). Infinity = nothing in compression. |
 | 11 | Stage Buckling | `λs` | Number | list | Per stage: buckling load factor under its own weight [-] (how many times heavier the clay could be before that stage buckles). |
+| 12 | Check | `Check` | Generic | item | The whole check result. Connect it to Print Playback to see how safe the print is at each moment. |
+| 13 | Score | `Score` | Integer | item | Printability score 1-100 (overhang, bead support, nozzle tilt, layer contact and heights, closed layers, buckling, layer bond). Use it to compare designs; Score Report says what limits it. |
+| 14 | Score Report | `Report` | Text | item | Each aspect of the score, weakest first, with what to change. |
 
 ### Shell Analysis
 
@@ -287,6 +356,41 @@ Connect the Print output to Print Check.
 | 11 | Bead Area | `A` | Number | tree | Per point: bead cross-section [mm²] (extruded volume per mm of path). |
 | 12 | Target Height | `h` | Number | tree | Per point: target layer height from the Layer Rule [mm]. |
 | 13 | Layer Field | `φ` | Number | list | Per vertex: layer index field (layer k is φ = k). |
+
+### Print Playback
+
+Nickname `Playback` · source `src/ClayBeso.GH/Components/PrintPlaybackComponent.cs`
+
+Watch the print being built: the beads laid down up to a moment of the print, and where the nozzle is.
+
+Connect the Print output of Print Layers and drive Time (0-1) with a slider. Right-click the slider > Animate to make a video.
+
+Each bead is as wide as the wall and as tall as its layer, with rounded sides, so the preview shows the real bead stack. Connect Print Check's Check output to see how safe the print is at that moment.
+
+**Inputs**
+
+| # | Name | Nick | Type | Access | Default | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | **Print** | `Print` | Generic | item | required | Print output of Print Layers. |
+| 1 | Time | `Time` | Number | item | `1.0` | Moment of the print, 0 = start, 1 = finished (by print time). Use a 0-1 slider. |
+| 2 | Colour | `Colour` | Integer | item | `0` | Bead colours: 0 = layer, 1 = flow factor, 2 = layer height, 3 = bead width, 4 = wall lean (a dropdown appears when you place the component). |
+| 3 | Check | `Check` | Generic | item | optional | Optional: Check output of Print Check, to report the buckling factor and interlayer utilisation of the stage printed so far. |
+| 4 | Speed | `Speed` | Number | item | `25.0` | Nozzle speed along the path [mm/s], for the print time. |
+| 5 | Smoothness | `Sm` | Integer | item | `3` | Segments per rounded bead side (1 = flat-sided beads, light; 4 = round). |
+| 6 | Colour Range | `CR` | Interval | item | optional | Fix the colour scale. Empty = the range over the whole print, so colours don't shift while playing. |
+| 7 | Legend | `Lg` | Boolean | item | `true` | Draw a colour legend in the viewport. |
+
+**Outputs**
+
+| # | Name | Nick | Type | Access | Description |
+| --- | --- | --- | --- | --- | --- |
+| 0 | Beads | `Beads` | Mesh | item | The beads printed so far (document units), coloured by the Colour option. |
+| 1 | Nozzle | `Nozzle` | Point | item | Nozzle position at this moment (document units). |
+| 2 | Current Layer | `Current Layer` | Curve | item | Toolpath of the layer being printed (document units). |
+| 3 | Layer | `Layer` | Integer | item | Layer being printed (1 = first). |
+| 4 | Elapsed | `Elapsed` | Number | item | Print time so far [min] at Speed. |
+| 5 | Total Time | `Total` | Number | item | Print time of the whole piece [min] at Speed (printing only, no travel or pauses). |
+| 6 | Info | `Info` | Text | item | Progress, time and, with Check connected, how safe the print is at this moment. |
 
 ### Wall Preview
 

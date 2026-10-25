@@ -77,6 +77,9 @@ namespace ClayBeso.GH.Components
             p.AddLineParameter("Flow Lines", "FL", "Finished piece: a short line per face along the force flow, for viewing.", GH_ParamAccess.list);
             p.AddNumberParameter("Buckling Factor", "Buckling Factor", "Lowest buckling load factor [-], finished piece or any stage: the loads times this make a perfect shell buckle. < 1 = buckles; real walls buckle well below it, so aim higher (see Info). Infinity = nothing in compression.", GH_ParamAccess.item);
             p.AddNumberParameter("Stage Buckling", "λs", "Per stage: buckling load factor under its own weight [-] (how many times heavier the clay could be before that stage buckles).", GH_ParamAccess.list);
+            p.AddGenericParameter("Check", "Check", "The whole check result. Connect it to Print Playback to see how safe the print is at each moment.", GH_ParamAccess.item);
+            p.AddIntegerParameter("Score", "Score", "Printability score 1-100 (overhang, bead support, nozzle tilt, layer contact and heights, closed layers, buckling, layer bond). Use it to compare designs; Score Report says what limits it.", GH_ParamAccess.item);
+            p.AddTextParameter("Score Report", "Report", "Each aspect of the score, weakest first, with what to change.", GH_ParamAccess.item);
         }
 
         protected override void SolveInstance(IGH_DataAccess da)
@@ -154,6 +157,10 @@ namespace ClayBeso.GH.Components
                 string when = shown < 0 ? "finished piece" : $"stage {shown}";
                 SetLegend($"{title}, {when}", unit, used, legend);
                 da.SetData(Out("Info"), Info(check, plan, shown));
+                da.SetData(Out("Check"), check);
+                var score = PrintScore.Evaluate(plan, check);
+                da.SetData(Out("Score"), score.Total);
+                da.SetData(Out("Score Report"), score.Report());
 
                 if (fromFinished && shown >= 0)
                     AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, $"{title} is shown for the finished piece (not computed per stage).");

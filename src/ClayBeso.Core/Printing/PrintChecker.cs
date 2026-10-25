@@ -32,6 +32,9 @@ namespace ClayBeso.Printing
     {
         public bool HasStrength { get; internal set; }
 
+        /// <summary>The print that was checked.</summary>
+        public PrintPlan Plan { get; internal set; }
+
         public AnalysisResult Final { get; internal set; }
         public ElementScaling FinalScaling { get; internal set; }
         public double[] FinalVonMises { get; internal set; }
@@ -100,6 +103,7 @@ namespace ClayBeso.Printing
             var r = buckling?.Analysis ?? solver.Solve(scaling);
             var result = new PrintCheckResult
             {
+                Plan = plan,
                 FinalBuckling = buckling,
                 HasStrength = s.Strength > 0,
                 Final = r,

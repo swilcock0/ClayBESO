@@ -129,10 +129,18 @@ namespace ClayBeso.Fem
         // of the new K. That costs one triangular solve per CG iteration and typically needs a
         // handful of iterations. The matrix is refactorised once CG gets as slow as a fresh
         // factorisation would have been.
+        //
+        // Void mode switches whole faces between solid and 1/1000, so the old factor is a poor
+        // preconditioner and CG fails every time. CG therefore gives up after MaxIterations (60; it
+        // normally needs 10-30), and after a failure it is skipped for the next 1, 3, 7, 15 solves
+        // (reset on success). Before this, void runs spent ~80% of their time in failed CG. The cut-off
+        // is an iteration count, not a time, so results don't depend on how busy the machine is.
 
         private bool _factorCurrent;   // _chol is the factorisation of the current values
         private bool _refactorNext;
         private double[] _lastX;
+        private int _cgFailures;       // consecutive failed CG attempts
+        private int _cgSkip;           // solves left before CG is tried again
 
         /// <summary>Reuse an older factorisation as a CG preconditioner when K has changed.</summary>
         public bool ReuseFactorisation { get; set; } = true;
@@ -140,7 +148,7 @@ namespace ClayBeso.Fem
         /// <summary>Relative residual |K x - b| / |b| that CG must reach.</summary>
         public double Tolerance { get; set; } = 1e-10;
 
-        public int MaxIterations { get; set; } = 200;
+        public int MaxIterations { get; set; } = 60;
 
         public int LastIterations { get; private set; }
         public bool LastRefactorised { get; private set; }
@@ -158,12 +166,21 @@ namespace ClayBeso.Fem
             LastIterations = 0;
             LastRefactorised = false;
             bool solved = false;
-            if (!_factorCurrent && _chol != null && ReuseFactorisation && !_refactorNext)
+            bool tryCg = !_factorCurrent && _chol != null && ReuseFactorisation && !_refactorNext;
+            if (tryCg && _cgSkip > 0)
+            {
+                _cgSkip--;
+                tryCg = false;
+            }
+            if (tryCg)
             {
                 var sw = Stopwatch.StartNew();
                 solved = Pcg(b, x);
                 // Once CG costs about as much as refactorising, refactorise next time.
                 if (solved && sw.Elapsed.TotalMilliseconds > 0.5 * LastFactorMs) _refactorNext = true;
+                if (solved) _cgFailures = 0;
+                else _cgSkip = (1 << Math.Min(++_cgFailures, 4)) - 1;
+                if (!solved) Array.Clear(x, 0, x.Length);
             }
             if (!solved)
             {

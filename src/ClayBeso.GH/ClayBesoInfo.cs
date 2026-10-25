@@ -49,6 +49,7 @@ namespace ClayBeso.GH
     internal static class Tab
     {
         public const string Name = "ClayBESO";
+        public const string Start = "0 Start";
         public const string Model = "1 Model";
         public const string Analyse = "2 Analyse";
         public const string Optimise = "3 Optimise";

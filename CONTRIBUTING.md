@@ -62,6 +62,8 @@ Be careful with requests like these:
 - Units inside: **mm, N, MPa**. Thickness and layer heights are always in mm.
 - Never change a component's GUID.
 - Every numerical change needs a passing test.
+- If Karamba3D is installed in Rhino, ask Claude to "run the Karamba check" after changes to the
+  solver or BESO. It compares our results with Karamba's (`tools/KarambaCheck/README.md`).
 
 ## 5. When something breaks
 

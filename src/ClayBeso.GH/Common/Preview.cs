@@ -85,6 +85,22 @@ namespace ClayBeso.GH.Common
             return m;
         }
 
+        /// <summary>Mesh with a value per vertex (e.g. print beads) coloured over <paramref name="range"/>.</summary>
+        public static Mesh ValueColoured(ClayBeso.Printing.ValueMesh mesh, double scale, (double lo, double hi) range)
+        {
+            var m = new Mesh();
+            double span = range.hi - range.lo;
+            for (int v = 0; v < mesh.Vertices.Count; v++)
+            {
+                var p = mesh.Vertices[v];
+                m.Vertices.Add(p.X / scale, p.Y / scale, p.Z / scale);
+                m.VertexColors.Add(ColourAt(span > 0 ? (mesh.Values[v] - range.lo) / span : 0.5));
+            }
+            foreach (var f in mesh.Faces) m.Faces.AddFace(f[0], f[1], f[2]);
+            m.Normals.ComputeNormals();
+            return m;
+        }
+
         /// <summary>Closed solid preview of the wall: mid-surface offset +/- t/2 along vertex normals.</summary>
         public static Mesh Thicken(TriMesh mesh, IList<double> vertexThickness, double scale)
         {

@@ -45,20 +45,8 @@ public class BesoTests
         else
             for (int e = 0; e < opt.Design.Length; e++) opt.Design[e] = 0.5 + 0.5 * rng.NextDouble();
 
-        ElementScaling Scale(double[] x)
-        {
-            var s = new ElementScaling(x.Length);
-            for (int e = 0; e < x.Length; e++)
-            {
-                if (mode == BesoMode.Thickness) s.SetThickness(e, x[e]);
-                else
-                {
-                    double t = model.Thickness[e], xp = Math.Pow(x[e], 3);
-                    s.Membrane[e] = xp * t; s.Bending[e] = xp * t * t * t; s.Weight[e] = x[e] * t; s.Thickness[e] = t;
-                }
-            }
-            return s;
-        }
+        // The optimiser's own stiffness/weight scaling (void mode: Huang & Xie interpolation).
+        ElementScaling Scale(double[] x) => opt.ScalingFor(x);
 
         var solver = new ShellSolver(model) { ReuseFactorisation = false }; // exact solves for finite differences
         var r0 = solver.Solve(Scale(opt.Design));
@@ -271,5 +259,43 @@ public class BesoTests
         _out.WriteLine($"iterations {opt.Iteration}, converged {opt.Converged}, vf {opt.CurrentVolumeFraction:F4}, voids {voids}/{model.ElementCount}");
         Assert.InRange(opt.CurrentVolumeFraction, 0.68, 0.72);
         Assert.True(voids > 0);
+    }
+
+    [Fact]
+    public void RemovedFacesAreAsStiffForTheirWeightAsSolidOnes()
+    {
+        var opt = new BesoOptimizer(VaseModel(12, 8), new BesoSettings { Mode = BesoMode.Void, VolumeFraction = 0.5, Penalty = 3, MinDensity = 1e-3 });
+        Assert.Equal(1.0, opt.VoidStiffness(1.0), 12);
+        Assert.Equal(1.0, opt.VoidStiffness(1.0, bending: true), 12);
+        // A removed face acts like a wall 1/1000 as thick: membrane stiffness = weight factor = x_min
+        // (plain x^p gave 1e-9 against a weight of 1e-3), bending x_min^3.
+        Assert.Equal(1e-3, opt.VoidStiffness(1e-3), 15);
+        Assert.Equal(1.0, opt.VoidStiffness(1e-3, bending: true) / 1e-9, 9);
+        var s = opt.ScalingFor(Enumerable.Repeat(1e-3, opt.Design.Length).ToArray());
+        double t = opt.Model.Thickness[0];
+        Assert.Equal(s.Weight[0] / t, s.Membrane[0] / t, 15);
+        Assert.Equal(1.0, s.Bending[0] / (t * t * t) / Math.Pow(s.Weight[0] / t, 3), 9);
+    }
+
+    [Fact]
+    public void VoidModeUnderSelfWeightDoesNotBlowUp()
+    {
+        // Self-weight dominated vase: removing clay makes it lighter, so compliance should drop.
+        // Two bugs made it rise instead (design ~40x worse than Karamba's BESO for shells, tools/KarambaCheck):
+        // removed faces were 10^6 times floppier in-plane than their weight (plain x^p), so they sagged;
+        // and ranking with the self-weight term cut the load path to the rim load, leaving it hanging.
+        var model = VaseModel(32, 24, lateral: 0.05);
+        var opt = new BesoOptimizer(model, new BesoSettings
+        {
+            Mode = BesoMode.Void, VolumeFraction = 0.5, EvolutionRate = 0.03, MaxAdmissionRatio = 0.01,
+            FilterRadius = SensitivityFilter.AutoRadius(model.Mesh), MaxIterations = 60,
+        });
+        while (opt.Step()) { }
+        var c = opt.ComplianceHistory;
+        _out.WriteLine($"iterations {opt.Iteration}, converged {opt.Converged}, vf {opt.CurrentVolumeFraction:F3}, " +
+                       $"C first {c[0]:G4}, max {c.Max():G4}, last {c[^1]:G4}");
+        Assert.InRange(opt.CurrentVolumeFraction, 0.49, 0.51);
+        Assert.True(c.Max() <= 1.5 * c[0], "compliance blew up during the run");
+        Assert.True(c[^1] < c[0], "half the clay removed, so a self-weight dominated vase should get stiffer");
     }
 }

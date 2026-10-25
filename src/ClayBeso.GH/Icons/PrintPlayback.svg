@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- stacked beads, printed half-way up -->
+  <g fill="#E8A27C" stroke="#3B2A22" stroke-width="0.8">
+    <rect x="3.5" y="19.2" width="13" height="2.6" rx="1.3"/>
+    <rect x="3.0" y="16.4" width="14" height="2.6" rx="1.3"/>
+    <rect x="3.0" y="13.6" width="14" height="2.6" rx="1.3"/>
+    <rect x="3.5" y="10.8" width="8.5" height="2.6" rx="1.3"/>
+  </g>
+  <!-- nozzle laying the current bead -->
+  <path d="M 10.2 3.2 H 15.8 L 14.0 7.4 H 12.0 Z" fill="#3B2A22"/>
+  <path d="M 13.0 7.4 V 9.8" stroke="#3B2A22" stroke-width="1.1" stroke-linecap="round"/>
+  <!-- play button -->
+  <circle cx="19.2" cy="6.0" r="4.3" fill="#C8643C"/>
+  <path d="M 17.8 3.7 L 21.5 6.0 L 17.8 8.3 Z" fill="#FFFFFF"/>
+</svg>

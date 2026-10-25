@@ -12,6 +12,10 @@ A Grasshopper plugin for Rhino 8 that:
    fixed-flow printers there are mappings where a thick wall comes from squashing the bead
    instead.
 
+It also **scores** how printable a design is (1–100), can **pull overhangs back** to a printable
+angle, and **plays the print back** bead by bead. For students there is one component that does it
+all: **Clay Print** (see *Quick start*).
+
 No other plugins or licences are needed.
 
 ![ClayBESO on a vase under self-weight](docs/Example.png)
@@ -44,6 +48,28 @@ Manual install:
 
 > If Windows blocked the downloaded files: right-click each DLL/GHA → Properties → *Unblock*.
 
+## Quick start (students)
+
+Use the **Clay Print** component (panel *0 Start*). It needs two things:
+
+1. **Shape**: the mid-surface of your wall (the surface halfway through the wall), as a surface or
+   mesh, standing on the build plate (its lowest point is the bed). Open at the top, no floor.
+2. **Printer**: pick your printer and nozzle from the dropdown.
+
+It then does everything else: clamps the base, optimises the wall thickness for the clay's own
+weight, makes the non-planar layers, checks the finished piece and each stage of printing (strength
+and buckling), and gives a **Score** from 1 to 100 with a **Report** saying what limits it and what
+to change. Shape your design with sliders and watch the score.
+
+- **Optimise** off = a uniform wall: faster while you are still shaping.
+- **Fix Overhang** on = parts that lean too far are pulled back to a printable angle first. The
+  corrected shape comes out of **Shape**.
+- **Time**: a 0–1 slider plays the print back (right-click the slider → *Animate* for a video).
+- **Layers** and **Flow Factor** are the toolpaths for your printer.
+
+The score compares designs. Its limits are placeholders until the tests in `docs/VALIDATION.md`
+calibrate them, so a high score is not a guarantee.
+
 ## Components
 
 Every input and output of every component (type, default, units) is listed in
@@ -51,11 +77,14 @@ Every input and output of every component (type, default, units) is listed in
 
 | Tab | Component | What it does |
 |---|---|---|
+| 0 Start | **Clay Print** | Everything in one: shape + printer → optimised wall, layers, checks, a 1–100 printability score and playback. |
+| 1 Model | **Fix Overhang** | Pulls overhanging parts of a vase back to a max lean (e.g. 45°), moving points only as far as needed. |
 | 1 Model | **Material** | E [MPa], ν, density [kg/m³], optional strength [MPa]. Defaults = green clay; right-click for presets (Clay, Wood). |
 | 1 Model | **Shell Model** | Mesh + material + thickness [mm] + supports (auto base) + loads → model. |
 | 3 Optimise | **Shell BESO** | Live BESO loop (Run / Reset), thickness or void mode. Its **Design** output carries everything downstream. |
 | 4 Print | **Print Layers** | Design → layer heights, non-planar layer toolpaths, flow factor and overhang check, in one step. |
-| 2 Analyse | **Print Check** | Print → interlayer, stress, stage and buckling check of the finished piece and of the print in progress. |
+| 2 Analyse | **Print Check** | Print → interlayer, stress, stage and buckling check of the finished piece and of the print in progress, and a 1–100 printability **Score** with a report. |
+| 4 Print | **Print Playback** | Print → the beads laid down up to a moment of the print (Time slider 0–1), the nozzle and the print time. Animate the slider for a video. |
 | 4 Print | **Layer Rule** | Optional: how thickness becomes layer height. Give the same rule to BESO and it travels on in the Design. |
 | 2 Analyse | **Shell Analysis** | Optional: stress, displacement, force-flow lines and (Buckling on) the buckling factor and shape of the starting shell (connect Shell Model) or the optimised one (connect BESO's Design). |
 | 4 Print | **Wall Preview** | Optional: thickened solid wall for visual checking. |
@@ -86,7 +115,10 @@ Mesh ──► Shell Model ◄── Material
               │ Print
               ▼
          Print Check    Show: utilisation / interface angle / stress / displacement / contact
-                        Stage: finished piece / worst print stage / any stage
+              │         Stage: finished piece / worst print stage / any stage
+              │ Check (optional)
+              ▼
+         Print Playback ◄── Time slider 0–1  (also takes Print directly from Print Layers)
 ```
 
 A working example is in **`examples/TestVase.ghx`**. It builds a parametric vase from ellipses
@@ -132,7 +164,15 @@ true.
 5. **Print Check**: connect **Print**, and give a clay **Strength** (here or on Material).
    It checks the finished piece under all loads and the print at N stages under self-weight, and
    reports the highest interlayer utilisation and the worst stage. *Show* and *Stage* choose what
-   the preview colours and when; *Flow Lines* draws the force flow.
+   the preview colours and when; *Flow Lines* draws the force flow. **Score** (1–100) and
+   **Score Report** sum it up (see *Printability score*).
+
+6. **Print Playback** (optional): connect **Print** and a 0–1 **Time** slider. It shows the beads printed
+   up to that moment (each as wide as the wall and as tall as its layer, with rounded sides), the
+   nozzle, the layer being printed and the print time at *Speed* (25 mm/s by default; printing only, no
+   travel or pauses). *Colour* picks layer, flow factor, layer height, bead width or wall lean. Connect
+   Print Check's **Check** output to read, at each moment, the buckling factor and interlayer
+   utilisation of the stage printed so far. Right-click the slider > *Animate* to export a video.
 
 **Layer Rule mappings** (dropdown on the Layer Rule):
 - *Proportional* (default): thinnest wall → hMin, thickest → hMax. Set **Thickness Range** to BESO's
@@ -140,6 +180,27 @@ true.
 - *Constant aspect ratio* (h = k·t): rises with thickness, same bead shape everywhere.
 - *Constant bead area* and *Linear inverse*: for printers without flow control, where a thicker
   wall can only come from a lower, more squashed layer.
+
+## Printability score
+
+Print Check and Clay Print give a score from 1 to 100. Each aspect gets its own 0–100 score, from 100
+at a comfortable value to 0 at a failing one:
+
+| Aspect | 100 at | 0 at |
+|---|---|---|
+| Overhang (wall lean, 95 % of the wall) | max lean − 15° | max lean + 10° |
+| Bead support (beads more than half past the one below) | 0 % | 5 % |
+| Nozzle tilt (path steeper than max tilt) | 0 % | 5 % |
+| Layer contact (layers taller than 0.8 × the wall) | 0 % | 10 % |
+| Layer heights (mean error from target) | 5 % | 30 % |
+| Closed layers (partial layers) | 0 % | 25 % |
+| Buckling (lowest factor, finished or any stage) | 6 | 1 |
+| Layer bond (interlayer utilisation, needs a strength) | 50 % | 100 % |
+
+The total is the geometric mean of the aspects, so improving anything raises it but one weak aspect
+pulls it down hard. If any aspect fails (below 10), the total is capped at 25. The Report lists the
+aspects weakest first with what to change. The limits are placeholders until calibrated with
+`docs/VALIDATION.md`: use the score to compare designs, not as a guarantee.
 
 ## Printer settings (Delta WASP 40100 Clay, 1.5–3 mm nozzles)
 
@@ -311,8 +372,10 @@ optimised *shape* does not depend on it. It matters for checking deflections and
 - Flat triangular elements converge from the stiff side on curved shells. Use fine meshes
   (≥ 40 divisions around a vase).
 - Void mode may stop at the iteration limit without converging. Holes interrupt continuous
-  layers, so check printability.
+  layers, so check printability. If a point load ends up on a hole, keep the faces around it
+  solid (Shell Model *Frozen Faces* input).
 - No G-code output yet. The plugin gives you polylines with per-point heights and flow factors.
 
-See `docs/THEORY.md` for the maths and references, `docs/VALIDATION.md` for the experimental validation plan, `CONTRIBUTING.md` to work on the code, and
+See `docs/THEORY.md` for the maths and references, `docs/VALIDATION.md` for the experimental validation plan,
+`tools/KarambaCheck/README.md` for the comparison with Karamba3D, `CONTRIBUTING.md` to work on the code, and
 `AGENTS.md` for the rules AI assistants follow in this repo.

@@ -42,9 +42,20 @@ dC/dx_e = 2 u_eᵀ (dfw/dx) w_e − u_eᵀ (dfm/dx Km + dfb/dx Kb) u_e
 
 - **Thickness mode** (x = t): fm = t, fb = t³, fw = t, dV/dt = A. Update by optimality criteria
   `t ← clamp(t (α⁺/λ)^η)` with move limit, and bisection on λ to hit this iteration's volume.
-- **Void mode** (x ∈ {x_min, 1}): fm = xᵖ t, fb = xᵖ t³, fw = x t (soft-kill, Huang & Xie 2010).
-  Elements are ranked by α and the top ones are kept until the volume is reached, with at most
+- **Void mode** (x ∈ {x_min, 1}): fm = k_m(x) t, fb = k_b(x) t³, fw = x t (soft-kill, Huang & Xie
+  2010). Elements are ranked by α and the top ones are kept until the volume is reached, with at most
   `AR·V_ref` re-admitted per iteration.
+  - Stiffness interpolation for self-weight (Huang & Xie 2011): `k(x) = c (1 − xᵖ) + xᵖ` with c set so
+    k(1) = 1 and k(x_min) = k_min. A removed face acts like a wall x_min times as thick: k_m(x_min) = x_min
+    (as stiff in-plane as it is heavy) and k_b(x_min) = x_min³ (for p = 3, k_b = x³). With plain xᵖ a
+    removed face was x_min^(p−1) = 10⁶ times floppier than its weight and sagged under gravity until
+    it dominated the compliance (the "parasitic" self-weight effect).
+  - The ranking uses the stiffness part only, α = (k_m′ t e_m + k_b′ t³ e_b)/(A t), while the analysis
+    keeps the self-weight. Switching a whole face off is far outside the range of the linear estimate,
+    and with the −2 t u·w term the update cut the path from a rim load to the base. Thickness mode
+    keeps the full gradient.
+  - Checked against Karamba3D's BESO for shells (`tools/KarambaCheck`): before, a vase under
+    self-weight plus a rim load ended ~40× more flexible than Karamba's design; now within 7 %.
 
 By default thickness mode keeps the starting volume (`V* = Σ A t₀`) and only redistributes it.
 
@@ -66,6 +77,22 @@ Both modes:
 - thickness mode move limit 0.3 (tMax − tMin) per iteration.
 
 These defaults bring typical thickness runs from ~21 to ~10 iterations with the same compliance.
+
+**Printability score** (`Printing/PrintScore`). Each aspect a gets a sub-score
+`s_a = clamp(100 (v_a − bad_a)/(good_a − bad_a), 0, 100)` (buckling on log λ). The total is the
+geometric mean `100 exp(mean ln(max(s_a, 1)/100))`, capped at 25 if any `s_a < 10`, rounded to 1–100.
+The limits are in the README table; they are engineering placeholders until VALIDATION.md §4, §5 and
+§7 calibrate them.
+
+**Overhang correction** (`Printing/OverhangFix`). Self-supporting rule: a point at height z must lie
+within `tan(α) Δ` horizontally of the wall at `z − Δ`, with Δ one mesh row (the median vertical
+extent of the upward edges) and α the max lean minus a 3° margin. Vertices are swept bottom to top;
+each is compared, along its radius from the vase axis at its height (mean of the vertices within Δ/2
+in height), with where that radius crosses the wall cut at `z − Δ`, and moved radially onto the limit
+if outside. The displacement field is then Laplace-smoothed (base fixed) and the sweep repeated
+(3 passes). Moving along the radius rather than the wall normal keeps vertices from crossing where the
+wall curves sharply (normal offsets of a sharp section past its radius of curvature self-intersect).
+Where the wall does not face the axis the radial offset over-estimates the overhang (safe side).
 
 **Reanalysis.** Factorising K takes about 98% of an iteration. After the first iteration, the
 previous Cholesky factor preconditions a CG solve of the new K (warm start from the last

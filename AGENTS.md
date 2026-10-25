@@ -64,6 +64,7 @@ src/ClayBeso.GH/          Grasshopper plugin (.gha). Thin wrappers only, no math
   Common/                 RhinoConvert (units + mesh conversion), Preview (colours, thicken)
   Components/             one file per Grasshopper component
 tests/ClayBeso.Tests/     xUnit tests of the core (benchmarks, sensitivities, layers, pipeline)
+tools/KarambaCheck/       developer-only cross-check against Karamba3D (not in the .sln, see its README)
 docs/THEORY.md            the maths, with references
 docs/VALIDATION.md        the experimental validation plan (tests, pass criteria, which plugin input each sets)
 docs/COMPONENTS.md        every component input/output, GENERATED from the sources (never edit by hand)
@@ -79,6 +80,14 @@ fresh shell. If `dotnet` is not found, use the full path `"C:\Program Files\dotn
 dotnet build ClayBeso.sln -c Release      # builds core, plugin (net48 + net7.0-windows) and tests
 dotnet test tests/ClayBeso.Tests          # must stay green (all tests pass)
 dotnet test tests/ClayBeso.Tests --logger "console;verbosity=detailed"   # shows benchmark numbers
+```
+
+After changing elements, the solver, buckling or BESO, also run the Karamba3D cross-check if Karamba
+is installed in Rhino (free, MIT; it is a local reference only, never a dependency of the plugin):
+
+```bash
+dotnet build tools/KarambaCheck -c Release
+dotnet tools/KarambaCheck/bin/Release/net8.0-windows/KarambaCheck.dll      # exit code = number of CHECK lines
 ```
 
 Built plugin: `src/ClayBeso.GH/bin/Release/net7.0-windows/` (Rhino 8 default runtime) and
@@ -136,9 +145,16 @@ into the Grasshopper Libraries folder. Rhino must be restarted to load a new bui
 The user wants **one straight chain with as few wires as possible**:
 
 ```
-Shell Model -> Shell BESO --Design--> Print Layers --Print--> Print Check
+Shell Model -> Shell BESO --Design--> Print Layers --Print--> Print Check --Check--> Print Playback
                   ^ Layer Rule (optional)
 ```
+
+Students use **Clay Print** (panel *0 Start*) instead: shape + printer dropdown in; score, report,
+toolpaths and playback out. It is a thin wrapper around `Printing/ClayPrint.Run` (core, tested), which
+chains `OverhangFix` (optional) → bed model → thickness BESO with the printer's layer rule →
+`PrintPlanner` → `PrintChecker` → `PrintScore` → `PrintTimeline`. Keep its inputs few: new options go
+in the core `ClayPrintOptions` with a sensible default, not on the component, unless the user asks.
+It caches the result so moving only the Time slider does not re-run the analysis.
 
 - `Fem/ShellDesign` = model + per-face thickness + resolved `LayerRule` + `BondModel`. Shell BESO
   outputs one ("Design"); Print Layers also accepts a plain Shell Model.
@@ -146,7 +162,15 @@ Shell Model -> Shell BESO --Design--> Print Layers --Print--> Print Check
   methods; force-aligned runs its own analysis for the force flow), slicing, overhang check and flow
   factors, returning a `PrintPlan` (the "Print" output).
 - `Printing/PrintChecker.Check(plan, settings)` does the finished-piece analysis + interlayer check
-  and the print stages, returning a `PrintCheckResult`.
+  and the print stages, returning a `PrintCheckResult` (it carries its `Plan`; Print Check outputs it
+  as "Check").
+- `Printing/PrinterProfile` holds a printer + nozzle; every limit follows from the nozzle diameter (the
+  3 mm preset = the plugin's defaults). `Printing/PrintScore` turns a plan (+ check) into the 1–100
+  score: per-aspect ramps, geometric mean, capped at 25 when an aspect fails. Its limits are
+  placeholders; change them only with the user, and keep the README score table in step.
+- `Printing/PrintTimeline` (print order, timing, bead mesh for playback) and `Printing/OverhangFix`
+  (radial self-supporting correction for vases) are geometry only, tested in `PlaybackTests` and
+  `OverhangFixTests`.
 - Don't reintroduce designs where the user has to wire the same data twice or back up the canvas
   (e.g. Force Flow from an analysis into the slicer). Compute it inside, or carry it in Design/Print.
 - **Every mode/option input gets an automatic dropdown.** Derive components from
@@ -175,8 +199,16 @@ Shell Model -> Shell BESO --Design--> Print Layers --Print--> Print Check
   `Design`/`DesignHistory` hold x; use `EffectiveThickness(design)` or `ScalingFor(design)` to get the
   wall, never x directly. `ThicknessFilterTests` checks the chain rule by finite differences.
 - `LinearSystem` reuses the previous Cholesky factor as a CG preconditioner (reanalysis) and only
-  refactorises when CG gets slow. `ReusedFactorisationGivesTheSameDesignAsDirectSolves` checks it. Void mode follows
-  Huang & Xie (2007/2010) with an admission-ratio cap.
+  refactorises when CG gets slow. `ReusedFactorisationGivesTheSameDesignAsDirectSolves` checks it. CG gives up
+  after 60 iterations (it normally needs 10-30) and then backs off (1, 3, 7, 15 solves); void mode's
+  on/off changes made it fail every iteration and cost ~80% of the run. Keep the cut-off an iteration
+  count, not a time: a time limit made that test flaky under parallel test load.
+- Void mode follows Huang & Xie (2007/2010) with an admission-ratio cap, and for self-weight Huang & Xie
+  (2011): a removed face acts like a wall x_min as thick (membrane stiffness and weight x_min, bending
+  x_min³; `BesoOptimizer.VoidStiffness`). Faces are **ranked by stiffness only**
+  (`RawSensitivity(r, includeWeight: false)`); the analysis keeps the self-weight. With plain xᵖ and the
+  weight term in the ranking, self-weight runs blew up (design ~40× worse than Karamba's). Keep
+  `VoidModeUnderSelfWeightDoesNotBlowUp` passing.
 - Layer field `phi`: layer k is the iso-curve `phi = k`. The conforming method solves two
   Poisson problems (harmonic stacking direction, then least-squares fit of
   `grad phi = direction / h`) with phi pinned to 0 at the base and an integer at the rim.
@@ -239,7 +271,8 @@ Shell Model -> Shell BESO --Design--> Print Layers --Print--> Print Check
   average mesh edge. In the core, `BesoSettings.FilterRadius` 0 still means no filter.
 - Sensitivity filter uses straight-line distance. A geodesic filter would avoid leaking across
   narrow gaps.
-- Void mode can oscillate without converging, and holes interrupt continuous layers.
+- Holes from void mode interrupt continuous layers. Void mode keeps no solid patch around point loads;
+  if a load ends up on a removed patch, freeze the faces around it (Shell Model *Frozen Faces*).
 - Printing output stops at polylines + per-point heights/widths: no G-code, travel moves,
   extrusion calculation or overhang check yet. A closed bottom (floor) must be printed
   separately with planar layers.
