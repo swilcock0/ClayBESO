@@ -155,6 +155,8 @@ chains `OverhangFix` (optional) → bed model → thickness BESO with the printe
 `PrintPlanner` → `PrintChecker` → `PrintScore` → `PrintTimeline`. Keep its inputs few: new options go
 in the core `ClayPrintOptions` with a sensible default, not on the component, unless the user asks.
 It caches the result so moving only the Time slider does not re-run the analysis.
+`examples/ClayPrintStart.ghx` (the vase sliders wired into Clay Print) is the default starting point
+for students; `examples/TestVase.ghx` shows the full chain.
 
 - `Fem/ShellDesign` = model + per-face thickness + resolved `LayerRule` + `BondModel`. Shell BESO
   outputs one ("Design"); Print Layers also accepts a plain Shell Model.

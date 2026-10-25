@@ -79,7 +79,8 @@ namespace ClayBeso.Printing
                 double l95 = leans[(int)Math.Min(leans.Length - 1, Math.Floor(0.95 * leans.Length))];
                 Add("Overhang", Ramp(l95, st.MaxOverhang - 15, st.MaxOverhang + 10),
                     $"95 % of the wall leans less than {l95:F0}° (limit {st.MaxOverhang:G3}°)",
-                    "Make the wall steeper where it leans most (Print Layers, Show = Wall lean), or try Force-aligned layers.");
+                    "Switch on Fix Overhang (Clay Print, or the Fix Overhang component) to pull the wall back automatically, " +
+                    "or make it steeper where it leans most (Print Layers, Show = Wall lean).");
             }
 
             double ratioShare = (double)plan.RatioFlags / points;

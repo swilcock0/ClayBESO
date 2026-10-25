@@ -50,7 +50,11 @@ Manual install:
 
 ## Quick start (students)
 
-Use the **Clay Print** component (panel *0 Start*). It needs two things:
+**Open `examples/ClayPrintStart.ghx` first.** It is a parametric vase (sliders → ellipses → loft →
+mesh) wired into Clay Print, with a printer dropdown, a Time slider and the Score and Report
+panels. Drag the vase sliders and watch the score; replace the vase with your own shape when ready.
+
+To build your own, use the **Clay Print** component (panel *0 Start*). It needs two things:
 
 1. **Shape**: the mid-surface of your wall (the surface halfway through the wall), as a surface or
    mesh, standing on the build plate (its lowest point is the bed). Open at the top, no floor.
@@ -121,7 +125,7 @@ Mesh ──► Shell Model ◄── Material
          Print Playback ◄── Time slider 0–1  (also takes Print directly from Print Layers)
 ```
 
-A working example is in **`examples/TestVase.ghx`**. It builds a parametric vase from ellipses
+A working example of this full chain (for advanced use) is in **`examples/TestVase.ghx`**. It builds a parametric vase from ellipses
 with sliders and needs no Rhino geometry: open it in Grasshopper and set BESO's *Run* toggle to
 true.
 
