@@ -2,8 +2,8 @@
 # Usage:  powershell -ExecutionPolicy Bypass -File scripts/install.ps1 [-Framework net48]
 # Restart Rhino afterwards.
 param(
-    [ValidateSet("net7.0-windows", "net48")]
-    [string]$Framework = "net7.0-windows"
+    [ValidateSet("net7.0", "net48")]
+    [string]$Framework = "net7.0"
 )
 
 $ErrorActionPreference = "Stop"

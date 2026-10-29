@@ -1,8 +1,8 @@
-# Builds the Rhino 8 Yak package (.yak) for ClayBESO into ./artifacts.
+# Builds the Rhino 8 Yak package (.yak) for ClayBESO into ./artifacts, for Windows and macOS.
 # Usage:  powershell -ExecutionPolicy Bypass -File scripts/package.ps1
 # The version comes from <Version> in src/ClayBeso.GH/ClayBeso.GH.csproj.
-# The package holds both builds: Rhino 8 loads net7.0/ under .NET Core (default) and net48/
-# under .NET Framework.
+# The package holds both builds: Rhino 8 loads net7.0/ under .NET Core (the default, and the only
+# runtime on macOS) and net48/ under .NET Framework (Windows only).
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -19,16 +19,7 @@ if (-not $version) { throw "No <Version> in $proj." }
 if ($LASTEXITCODE -ne 0) { throw "Build failed." }
 
 $artifacts = Join-Path $root "artifacts"
-$stage = Join-Path $artifacts "yak"
-if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
-New-Item -ItemType Directory -Force $stage | Out-Null
-
 $bin = Join-Path $root "src\ClayBeso.GH\bin\Release"
-foreach ($pair in @(@("net7.0-windows", "net7.0"), @("net48", "net48"))) {
-    $dst = Join-Path $stage $pair[1]
-    New-Item -ItemType Directory -Force $dst | Out-Null
-    Copy-Item (Join-Path $bin "$($pair[0])\*") $dst -Recurse -Exclude *.pdb
-}
 
 $manifest = @"
 ---
@@ -50,12 +41,21 @@ keywords:
 - non-planar
 - fem
 "@
+$stage = Join-Path $artifacts "yak"
+if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+New-Item -ItemType Directory -Force $stage | Out-Null
+
+foreach ($framework in @("net7.0", "net48")) {
+    $dst = Join-Path $stage $framework
+    New-Item -ItemType Directory -Force $dst | Out-Null
+    Copy-Item (Join-Path $bin "$framework\*") $dst -Recurse -Exclude *.pdb
+}
 Set-Content -Path (Join-Path $stage "manifest.yml") -Value $manifest -Encoding utf8
 Copy-Item (Join-Path $root "src\ClayBeso.GH\Icons\icon.png") (Join-Path $stage "icon.png")
 
 Push-Location $stage
 try {
-    & $yak build --platform win
+    & $yak build --platform any
     if ($LASTEXITCODE -ne 0) { throw "yak build failed." }
 } finally { Pop-Location }
 

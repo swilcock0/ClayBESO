@@ -77,7 +77,7 @@ fresh shell. If `dotnet` is not found, use the full path `"C:\Program Files\dotn
 (or in Git Bash: `export PATH="/c/Program Files/dotnet:$PATH"`).
 
 ```bash
-dotnet build ClayBeso.sln -c Release      # builds core, plugin (net48 + net7.0-windows) and tests
+dotnet build ClayBeso.sln -c Release      # builds core, plugin (net7.0 + net48) and tests
 dotnet test tests/ClayBeso.Tests          # must stay green (all tests pass)
 dotnet test tests/ClayBeso.Tests --logger "console;verbosity=detailed"   # shows benchmark numbers
 ```
@@ -90,17 +90,21 @@ dotnet build tools/KarambaCheck -c Release
 dotnet tools/KarambaCheck/bin/Release/net8.0-windows/KarambaCheck.dll      # exit code = number of CHECK lines
 ```
 
-Built plugin: `src/ClayBeso.GH/bin/Release/net7.0-windows/` (Rhino 8 default runtime) and
-`.../net48/` (Rhino 8 started with the .NET Framework runtime). `scripts/install.ps1` copies it
+Built plugin: `src/ClayBeso.GH/bin/Release/net7.0/` (Rhino 8 default runtime, Windows and macOS) and
+`.../net48/` (Windows Rhino 8 started with the .NET Framework runtime). `scripts/install.ps1` copies it
 into the Grasshopper Libraries folder. Rhino must be restarted to load a new build.
+net7.0 is cross-platform (no `-windows`): it compiles against reference-only WinForms/System.Drawing,
+which Rhino supplies at run time, as in McNeel's plugin template. It is untested on a Mac until a user
+confirms it loads; don't use Windows-only APIs in the GH project.
 
 ## Releasing (only when the user asks)
 
 1. Bump `<Version>` in `src/ClayBeso.GH/ClayBeso.GH.csproj` (semantic versioning: 0.x.y). It is the only
    place: the plugin info and the Help component read it from the built assembly.
-2. Build and test, then run `scripts/package.ps1`. It writes `artifacts/claybeso-<version>-rh8_0-win.yak`.
+2. Build and test, then run `scripts/package.ps1`. It writes `artifacts/claybeso-<version>-rh8_0-any.yak`
+   (Windows and macOS).
 3. Commit, tag `v<version>`, push the commit and the tag, then
-   `gh release create v<version> artifacts/claybeso-<version>-rh8_0-win.yak --title ... --notes ...`.
+   `gh release create v<version> artifacts/claybeso-<version>-rh8_0-any.yak --title ... --notes ...`.
 4. Don't `yak push` to the public McNeel package server unless the user explicitly asks.
 
 ## Ground rules (do not break these)

@@ -1,17 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- Rhino 8 runs on .NET 7+ by default and can be switched to .NET Framework 4.8. -->
-    <TargetFrameworks>net7.0-windows;net48</TargetFrameworks>
+    <!-- Rhino 8 runs on .NET 7+ by default (Windows and macOS) and can be switched to
+         .NET Framework 4.8 on Windows. net7.0 is cross-platform, like McNeel's plugin template. -->
+    <TargetFrameworks>net7.0;net48</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <AssemblyName>ClayBeso</AssemblyName>
     <RootNamespace>ClayBeso.GH</RootNamespace>
     <TargetExt>.gha</TargetExt>
-    <Version>0.7.0</Version>
+    <Version>0.7.1</Version>
     <Title>ClayBESO</Title>
     <Description>BESO shell optimisation and non-planar variable layer heights for 3D printed clay.</Description>
-    <UseWindowsForms>true</UseWindowsForms>
-    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <NoWarn>$(NoWarn);NU1701;NETSDK1138</NoWarn>
   </PropertyGroup>
@@ -19,6 +18,21 @@
   <ItemGroup>
     <!-- Oldest Rhino 8 SDK, so the plugin loads in any Rhino 8 service release. -->
     <PackageReference Include="Grasshopper" Version="8.0.23304.9001" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net48'">
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <!-- net7.0: Rhino supplies System.Windows.Forms and System.Drawing at run time (its own copies on
+       macOS), so only compile against reference copies of them (nothing extra is shipped). -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net7.0'">
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net7.0'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" ExcludeAssets="all" GeneratePathProperty="true" />
+    <Reference Include="$(PkgMicrosoft_NETFramework_ReferenceAssemblies_net48)/build/.NETFramework/v4.8/System.Windows.Forms.dll" Private="False" />
+    <PackageReference Include="System.Drawing.Common" Version="7.0.0" ExcludeAssets="runtime" />
   </ItemGroup>
 
   <ItemGroup>

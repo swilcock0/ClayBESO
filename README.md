@@ -31,8 +31,10 @@ thick regions get taller layers and more flow.*
 ## Install
 
 **Easiest:** download the `.yak` file from the
-[latest release](https://github.com/swilcock0/ClayBESO/releases/latest) and **drag it onto an
-open Rhino 8 window**. Then restart Rhino. To uninstall, use `_PackageManager` → Installed.
+[latest release](https://github.com/swilcock0/ClayBESO/releases/latest) (the same file works on Windows and
+macOS) and **drag it onto an open Rhino 8 window**. Then restart Rhino. To uninstall, use
+`_PackageManager` → Installed. It has not been tried on a Mac yet: if it does not load, please open
+an issue with the message Rhino shows.
 
 Manual install:
 
