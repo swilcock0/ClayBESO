@@ -8,7 +8,7 @@
     <AssemblyName>ClayBeso</AssemblyName>
     <RootNamespace>ClayBeso.GH</RootNamespace>
     <TargetExt>.gha</TargetExt>
-    <Version>0.7.1</Version>
+    <Version>0.8.0</Version>
     <Title>ClayBESO</Title>
     <Description>BESO shell optimisation and non-planar variable layer heights for 3D printed clay.</Description>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>

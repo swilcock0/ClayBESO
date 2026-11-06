@@ -84,6 +84,7 @@ Every input and output of every component (type, default, units) is listed in
 | Tab | Component | What it does |
 |---|---|---|
 | 0 Start | **Clay Print** | Everything in one: shape + printer → optimised wall, layers, checks, a 1–100 printability score and playback. |
+| 0 Start | **Check Layers** | For layers you designed yourself: points per layer (or one spiral) + heights → the wall through them, every check (layer height, contact, overhang, bead support, tilt, layer bond, print stages, buckling) as problem areas with a reason, issue points, and the score. *Wall* = Ideal thickness shows where a woven path would need a wider wall. |
 | 1 Model | **Fix Overhang** | Pulls overhanging parts of a vase back to a max lean (e.g. 45°), moving points only as far as needed. |
 | 1 Model | **Material** | E [MPa], ν, density [kg/m³], optional strength [MPa]. Defaults = green clay; right-click for presets (Clay, Wood). |
 | 1 Model | **Shell Model** | Mesh + material + thickness [mm] + supports (auto base) + loads → model. |

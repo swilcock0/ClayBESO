@@ -14,7 +14,7 @@ mesh output by Shell Model; per-vertex lists follow its vertices.
 Inputs in **bold** must be connected. The others have a default (shown) or are optional. New inputs
 are only ever added at the end, so saved definitions keep working.
 
-- **0 Start**: [Clay Print](#clay-print)
+- **0 Start**: [Check Layers](#check-layers), [Clay Print](#clay-print)
 - **1 Model**: [Material](#material), [Shell Model](#shell-model), [Fix Overhang](#fix-overhang)
 - **2 Analyse**: [Print Check](#print-check), [Shell Analysis](#shell-analysis)
 - **3 Optimise**: [Shell BESO](#shell-beso)
@@ -23,6 +23,42 @@ are only ever added at the end, so saved definitions keep working.
 - **Legacy (hidden from the toolbar)**: [Interlayer Check](#interlayer-check), [Layer Heights](#layer-heights), [Non-planar Layers](#non-planar-layers), [Print Stages](#print-stages)
 
 ## 0 Start
+
+### Check Layers
+
+Nickname `Check Layers` · source `src/ClayBeso.GH/Components/CheckLayersComponent.cs`
+
+Checks layers you designed yourself. Give the points of each layer (one branch per layer, lowest first, or one spiral) and, if you have them, the layer heights. It builds the wall through your points and runs every check Clay Print does: layer height limits, layer contact, overhang, bead support and nozzle tilt at every point, and the structure (bond between the layers, every print stage, buckling) with the base on the bed under its own weight.
+
+Faces that fail are grouped into areas: Issues says what is wrong and what to change, Issue Points and Issue Areas show where. Your layers are not changed or re-sliced, so change your definition and watch the issues go.
+
+**Inputs**
+
+| # | Name | Nick | Type | Access | Default | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | **Points** | `Points` | Point | tree | required | The points of your layers, in print order (document units): one branch per layer, lowest layer first (e.g. {0;0}, {0;1}, ...). A closed layer may repeat its first point at the end. One branch that winds round several times is read as a spiral and split into turns. |
+| 1 | Heights | `Heights` | Number | tree | optional | Optional: the layer height at each point [mm], same branches as Points (or one value per layer, one value for all, or one flat list in the same order). It is the bead's own height: the distance down to the layer below. Empty = measured from the spacing of your layers. |
+| 2 | Printer | `Printer` | Integer | item | `0` | Printer and nozzle (a dropdown appears when you place the component). Sets the bead width (1.5 × nozzle), layer height, overhang and tilt limits. |
+| 3 | Wall | `Wall` | Integer | item | `0` | 0 = one bead everywhere (1.5 × nozzle wide). 1 = ideal thickness: the wall the optimisation gives this shape with the same clay, within the printer's wall range. Where it is wider than one bead you need a woven (back-and-forth) path; Show = Wall thickness shows where. |
+| 4 | Show | `Show` | Integer | item | `0` | What the Mesh is coloured by: 0 = problems (worst check, 1 = at its limit), 1 = layer height, 2 = layer contact (height / bead width), 3 = wall lean, 4 = bead support, 5 = layer tilt, 6 = layer bond, 7 = while printing, 8 = buckling shape, 9 = wall thickness, 10 = given height minus the space to the layer below (below 0 = gap under the bead, above 0 = squashed; dropdown appears when placed). |
+| 5 | Material | `Material` | Generic | item | optional | Optional: a Material component. Default: green clay (E = 1 MPa, 1900 kg/m³, strength 0.03 MPa placeholder). |
+| 6 | Colour Range | `Colour Range` | Interval | item | optional | Fix the colour scale. Empty = automatic for what is shown. |
+| 7 | Legend | `Legend` | Boolean | item | `true` | Draw a colour legend in the viewport. |
+
+**Outputs**
+
+| # | Name | Nick | Type | Access | Description |
+| --- | --- | --- | --- | --- | --- |
+| 0 | Score | `Score` | Integer | item | Printability 1-100, as in Clay Print. Use it to compare versions of the design. |
+| 1 | Issues | `Issues` | Text | list | One line per problem area, worst first: what fails, in which layers (branch numbers), the measured value against its limit, and what to change. |
+| 2 | Issue Points | `Issue Points` | Point | list | Worst point of each problem area (document units), in the same order as Issues. |
+| 3 | Issue Areas | `Issue Areas` | Mesh | list | The faces of each problem area (document units), in the same order as Issues. Use List Item to look at one. |
+| 4 | Mesh | `Mesh` | Mesh | item | The wall through your points (document units), coloured by Show. |
+| 5 | Report | `Report` | Text | item | Each aspect of the score, weakest first, with what to change. |
+| 6 | Info | `Info` | Text | item | What was checked: layers, mesh, printer, wall, buckling, notes. |
+| 7 | Values | `Values` | Number | list | Per face of Mesh: the shown quantity (NaN where undefined). |
+| 8 | Print | `Print` | Generic | item | For advanced use: the print (connect to Print Playback). |
+| 9 | Check | `Check` | Generic | item | For advanced use: the check result (connect to Print Playback). |
 
 ### Clay Print
 

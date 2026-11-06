@@ -159,6 +159,12 @@ chains `OverhangFix` (optional) → bed model → thickness BESO with the printe
 `PrintPlanner` → `PrintChecker` → `PrintScore` → `PrintTimeline`. Keep its inputs few: new options go
 in the core `ClayPrintOptions` with a sensible default, not on the component, unless the user asks.
 It caches the result so moving only the Time slider does not re-run the analysis.
+**Check Layers** (also *0 Start*) is for students who draw their own layers: a thin wrapper around
+`Printing/LayerReview.Run` (core, tested in `LayerReviewTests`). It builds the wall through the given points (zipping
+each layer to the next, so every face strip is one of their layers; one winding branch = a spiral, split into turns),
+analyses tall walls on a coarser grid mapped back, reuses OverhangCheck / PrintChecker / PrintScore, and groups failing
+faces into `LayerIssue` areas with a reason and advice. It never re-slices. Bead width = `PrinterProfile.BeadWidth`
+(1.5 × nozzle, placeholder); Wall = Ideal runs thickness BESO (no layer rule: the heights are the design).
 `examples/ClayPrintStart.ghx` (the vase sliders wired into Clay Print) is the default starting point
 for students; `examples/TestVase.ghx` shows the full chain.
 

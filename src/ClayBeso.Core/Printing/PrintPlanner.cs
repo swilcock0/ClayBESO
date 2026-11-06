@@ -56,6 +56,9 @@ namespace ClayBeso.Printing
         /// <summary>Relative error realised vs target layer height per face (NaN where undefined).</summary>
         public double[] HeightError { get; internal set; }
 
+        /// <summary>The layers are the turns of one spiral path (open by design, so not scored as partial layers).</summary>
+        public bool Spiral { get; internal set; }
+
         public double FlowFactor(double beadArea) => NominalArea > 0 ? beadArea / NominalArea : double.NaN;
 
         public int OpenPaths => Paths.Count(p => !p.Closed);

@@ -64,6 +64,12 @@ namespace ClayBeso.Printing
             ForNozzle("WASP 40100, 1.5 mm nozzle", 1.5),
         };
 
+        /// <summary>
+        /// Width of one bead [mm], 1.5 x the nozzle, for checking layers drawn by hand (Check Layers). A
+        /// placeholder: the real width depends on flow and layer height, so measure a printed bead.
+        /// </summary>
+        public double BeadWidth => Math.Round(1.5 * Nozzle, 2);
+
         /// <summary>Starting wall [mm] for thickness optimisation: the middle of the wall range.</summary>
         public double StartWall => 0.5 * (MinWall + MaxWall);
 

@@ -68,6 +68,19 @@ namespace ClayBeso.Printing
             TargetHeight = h; SpacingFactor = factor; LayerCount = count;
         }
 
+        /// <summary>
+        /// A field from layers someone already drew: <paramref name="phi"/> is the layer number at each
+        /// vertex (integer on a layer, fractional between). Target heights are the realised ones.
+        /// </summary>
+        internal static LayerField FromPhi(TriMesh mesh, double[] phi, int[] baseVertices, int[] topVertices, Vec3 up, bool vertical)
+        {
+            var factor = SpacingFactors(mesh, up.Unit(), vertical);
+            var real = RealisedFaceHeight(mesh, phi, factor);
+            var h = mesh.FaceToVertex(real.Select(x => double.IsInfinity(x) || double.IsNaN(x) ? 0 : x).ToArray());
+            int count = (int)Math.Floor(phi.Max() + 1e-9);
+            return new LayerField(mesh, phi, baseVertices, topVertices, h, factor, count);
+        }
+
         /// <summary>Vertices within <paramref name="tolerance"/> of the lowest / highest Z.</summary>
         public static (int[] bottom, int[] top) ExtremeVertices(TriMesh mesh, Vec3 up, double tolerance)
         {

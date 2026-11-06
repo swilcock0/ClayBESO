@@ -62,7 +62,8 @@ namespace ClayBeso.Printing
         }
 
         /// <param name="check">Optional structural check of the same plan (adds buckling and layer bond).</param>
-        public static PrintScore Evaluate(PrintPlan plan, PrintCheckResult check = null)
+        /// <param name="extra">More aspects to include (e.g. the layer height range of layers drawn by hand).</param>
+        public static PrintScore Evaluate(PrintPlan plan, PrintCheckResult check = null, IEnumerable<ScoreItem> extra = null)
         {
             var st = plan.Settings;
             var score = new PrintScore();
@@ -107,7 +108,7 @@ namespace ClayBeso.Printing
                     "Avoid sharp changes of wall thickness, or try Eikonal layers.");
             }
 
-            if (plan.Paths.Count > 0)
+            if (plan.Paths.Count > 0 && !plan.Spiral)
             {
                 double open = (double)plan.OpenPaths / plan.Paths.Count;
                 Add("Closed layers", Ramp(open, 0, 0.25),
@@ -136,6 +137,10 @@ namespace ClayBeso.Printing
                         "Thicken the wall where layers are most loaded (Print Check, Show = Interlayer utilisation), or use lower layers.");
                 }
             }
+
+            if (extra != null)
+                foreach (var item in extra)
+                    if (!double.IsNaN(item.Score)) score.Items.Add(item);
 
             if (score.Items.Count == 0)
             {
